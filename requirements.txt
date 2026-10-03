@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+qdrant-client
+fastembed
+langchain-core
+langchain-openai
+langchain-ollama
+langchain-text-splitters
+openai
+python-dotenv
+pymysql
+langfuse
+ollama
+sentence-transformers
+tiktoken

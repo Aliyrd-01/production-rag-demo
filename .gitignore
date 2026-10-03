@@ -1,0 +1,8 @@
+﻿.env
+scripts/.env
+__pycache__/
+*.pyc
+st_out.txt
+st_err.txt
+smoke*_out.txt
+smoke*_err.txt
