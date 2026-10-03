@@ -31,19 +31,27 @@ OR_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
 OR_KEY = os.getenv("OPENROUTER_API_KEY")
 OR_BASE = "https://openrouter.ai/api/v1"
 
+QUBAX_BASE = os.getenv("QUBAX_API_BASE", "https://api.qubax.ai/v1")
+QUBAX_KEY = os.getenv("QUBAX_API_KEY")
+QUBAX_MODELS = [m.strip() for m in
+                os.getenv("QUBAX_MODELS", "qwen3-235b-a22b-2507,minimax-m2.5").split(",")
+                if m.strip()]
+
 _KEYS_WARNED = False
 
 
 def _check_api_keys(need_zen: bool = False):
     global _KEYS_WARNED
-    if not ZEN_KEY and not OR_KEY and not MISTRAL_KEY:
+    if not ZEN_KEY and not OR_KEY and not MISTRAL_KEY and not QUBAX_KEY:
         raise RuntimeError(
-            "No API keys. Set OPENAI_API_KEY (Zen) "
+            "No API keys. Set QUBAX_API_KEY / OPENAI_API_KEY (Zen) "
             "and/or OPENROUTER_API_KEY, MISTRAL_API_KEY in .env"
         )
     if need_zen and not ZEN_KEY:
         raise RuntimeError("OPENAI_API_KEY required for get_judge_llm")
     if not _KEYS_WARNED:
+        if not QUBAX_KEY:
+            print("[!] QUBAX_API_KEY not set - Qubax models skipped")
         if not ZEN_KEY:
             print("[!] OPENAI_API_KEY not set - Zen models skipped")
         if not MISTRAL_KEY:
@@ -65,9 +73,11 @@ def _make(temperature: float, model: str, base: str, key: str) -> ChatOpenAI:
 
 
 def _build_pool(temperature: float):
-    """Список LLM: Zen -> Mistral -> OpenRouter -> Ollama (fallback)."""
+    """Список LLM: Qubax -> Zen -> Mistral -> OpenRouter. При лимите/ошибке — следующий."""
     _check_api_keys()
     pool = []
+    if QUBAX_KEY:
+        pool.extend(_make(temperature, m, QUBAX_BASE, QUBAX_KEY) for m in QUBAX_MODELS)
     if ZEN_KEY:
         pool.extend(_make(temperature, m, ZEN_BASE, ZEN_KEY) for m in ZEN_MODELS)
     if MISTRAL_KEY:
@@ -75,7 +85,9 @@ def _build_pool(temperature: float):
     if OR_KEY and os.getenv("ALLOW_OPENROUTER", "").lower() in ("1", "true", "yes"):
         pool.append(_make(temperature, OR_MODEL, OR_BASE, OR_KEY))
     if not pool:
-        raise RuntimeError("Пул LLM пуст: нет валидных ключей Zen/Mistral/OpenRouter и Ollama недоступен")
+        raise RuntimeError(
+            "Пул LLM пуст: нет валидных ключей Qubax/Zen/Mistral/OpenRouter"
+        )
     return pool
 
 
@@ -201,6 +213,7 @@ def get_chat_llm(temperature: float = 0.7):
 
 
 _PROVIDERS = (
+    ("api.qubax.ai", "Qubax"),
     ("opencode.ai", "OpenCode Zen"),
     ("api.mistral.ai", "Mistral"),
     ("openrouter.ai", "OpenRouter"),
