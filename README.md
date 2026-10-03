@@ -1,53 +1,71 @@
-# RAG для резюме — облачный деплой (план)
+# Production RAG — Hybrid Retrieval + Citations
 
-Цель: отдать работодателю живую ссылку на RAG без твоего компа.
+Демо RAG-пайплайна, развёрнутое на **Streamlit Community Cloud** (бесплатно, без карты).
 
-## Что уже облачное
-- **Qdrant** — уже Qdrant Cloud (QDRANT_URL в .env). Менять не надо.
+## Что внутри
 
-## Что осталось локально (блокеры)
-1. **LLM генерация** — `common.py` пул: Zen → Mistral → OpenRouter → **Ollama qwen2.5:3b (локально)**. На Render Ollama нет.
-2. **Embeddings dense** — `common.py get_embeddings()` → **Ollama nomic-embed-text (768d, локально)**. На Render Ollama нет.
-3. **Индекс** — Qdrant коллекция `rag_v2` построена эмбеддингами *nomic-embed-text (768d)*, которые считала Ollama. Если сменить embeddings — надо ПЕРЕСОЗДАТЬ индекс.
-4. **API-сервер** — `module_12_api.py` на 127.0.0.1:8000. Вынести в облако.
+| Слой | Реализация |
+|---|---|
+| Векторное хранилище | Qdrant Cloud, коллекция `rag_v2_q_test` — 310 746 пассажей MS MARCO |
+| Dense-векторы | `nomic-ai/nomic-embed-text-v1.5` (768d, COSINE, INT8) через FastEmbed |
+| Sparse-векторы | `Qdrant/bm25` через FastEmbed |
+| Retrieval | dense + sparse → RRF fusion, либо LLM-rerank, либо CrossEncoder (`bge-reranker-base`) |
+| Генерация | LLM-пул (Zen → Mistral → OpenRouter) с prompt, требующим цитаты `[N](msmarco#id)` |
+| UI | Streamlit |
 
-> sparse-часть (Qdrant/bm25) и reranker (bge-reranker) идут черещ FastEmbed — это **Python-библиотека**, работает и в контейнере, Ollama не нужна. Только dense — заложник Ollama.
+Датасет **не пересобирается**: dense-модель в приложении обязана совпадать с той,
+по которой построен индекс. Смена модели = переиндексация 310k пассажей.
 
-## Два пути
+## Стратегии retrieval
 
-### Путь A (быстро, без переиндексации) — НЕ стоит
-Оставить nomic-embed-text Cloud? Ollama в облаке нет → не работает.
-Вывод: Путь A отсутствует, переиндексация неизбежна.
+- `hybrid` — dense + sparse, Reciprocal Rank Fusion (дефолт)
+- `dense_only` — только векторная семантика
+- `sparse_only` — только лексика (BM25)
+- `hybrid_llm_rerank` — гибридный поиск, затем LLM переоценивает релевантность
+- `hybrid_cross_encoder` — гибридный поиск, затем `bge-reranker-base`
 
-### Путь B (правильный) — переиндексация на облачные embeddings
-1. Выбрать облачные embeddings (Qubax / OpenAI text-embedding-3-small / иное).
-2. Пересоздать коллекцию `rag_v2_new` нужной размерности; пересканировать корпус MS MARCO.
-3. В `.env` прописать новую коллекцию и облачные embeddings в common.py.
-4. LLM генерацию переключить на Qubax (или оставить Zen/Mistral/OpenRouter — они уже облачные, работают из контейнера, Ollama не нужна).
-5. Деплой на Render (см. ниже).
+## Запуск локально
 
-## Деплой на Render (простой, бесплатно)
-1. Залить код в Git-репо (D:\AI\LangChain\final\scripts + requirements.txt + Dockerfile).
-2. Render → New Web Service → указать репо; Environment загрузить из `.env.example` (настоящие ключи).
-3. Render автоматически соберёт Docker-образ. Даёт URL `https://<имя>.onrender.com`.
-4. Проверка: `/health` → ok; `/docs` → Swagger; `/query` → JSON-ответ.
-5. HTML-демка на `/` (index.html).
+```powershell
+pip install -r requirements.txt
+Copy-Item .env.example .env   # заполнить ключи
+streamlit run app.py
+```
 
-Нюансы Render:
-- Free tier "засыпает" после ~15 мин простоя; первый запрос после сна идёт ~30–60 сек.
-- Стриминг SSE лучше держать на платном tier (или просто оставить `/query`).
+## Секреты в облаке
 
-## Декомпозиция: кто что делает
-- cloudflared (туннель) — только для n8n/Telegram, к облачному RAG не относится.
-- Render — просто хостинг FastAPI-приложения. Qdrant Cloud и MySQL уже в облаке.
+`.env` нет. Ключи задаются в **App Settings → Secrets** в формате TOML:
 
-## Что уже подготовлено здесь (deploy-rag/)
-- requirements.txt — зависимости для Docker/Render.
-- Dockerfile — образ python:3.14, копирует scripts/ + index.html, cmd module_12_api.py на 0.0.0.0:8000.
-- .env.example — шаблон переменных (ключи вписать свои).
+```toml
+QDRANT_URL = "https://<cluster>.europe-west3-0.gcp.cloud.qdrant.io:6333"
+QDRANT_API_KEY = "..."
+QDRANT_COLLECTION = "rag_v2_q_test"
+FASTEMBED_DENSE_MODEL = "nomic-ai/nomic-embed-text-v1.5"
+FASTEMBED_SPARSE_MODEL = "Qdrant/bm25"
+FASTEMBED_RERANKER_MODEL = "BAAI/bge-reranker-base"
+OPENAI_API_BASE = "https://opencode.ai/zen/v1"
+OPENAI_API_KEY = "..."
+OPENROUTER_API_KEY = "..."
+OPENROUTER_MODEL = "openrouter/free"
+ALLOW_OPENROUTER = 1
+```
 
-## Открытые вопросы (нужны решения пользователя)
-1. Qubax ключ для генерации и/или embeddings? Или оставить Zen/Mistral/OpenRouter (уже облачные)?
-2. Какие embeddings для нового индекса (размерность определит переиндексацию)?
-3. Хостинг: Render (рекомендуется) или Railway / Docker VPS?
-4. Готовность к переиндексации коллекции (прогрев на облаке).
+`app.py` переносит секреты из `st.secrets` в `os.environ` до импорта
+`common.py` / `module_5_retrieval.py`, которые читают `os.getenv()`.
+
+## Ограничения Community Cloud
+
+- 2 CPU, **2.7 GB RAM** на приложение, 50 GB диск
+- приложение засыпает после 12 ч без трафика; любой посетитель будит его одним кликом
+- первый запуск скачивает модели FastEmbed (~500 MB) — занимает 1–3 минуты
+- публичный репозиторий: код видно всем, секреты — только в Streamlit Secrets
+
+## Файлы
+
+```
+app.py                        Streamlit UI
+scripts/common.py             LLM-пул + FastEmbed-обёртки
+scripts/module_5_retrieval.py Qdrant hybrid search, rerank
+scripts/module_7_generation.py цитаты и контекст
+scripts/module_12_api.py      тот же пайплайн через FastAPI (локальный вариант)
+```

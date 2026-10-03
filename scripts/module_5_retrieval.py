@@ -15,7 +15,10 @@ Benchmark: 10 вопросов из MS MARCO, R@5, R@10, MRR, latency.
 """
 
 import os, sys, time, json, argparse
-sys.stdout.reconfigure(encoding="utf-8")
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass  # под Streamlit stdout — обёртка, reconfigure может отсутствовать
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from dotenv import load_dotenv
@@ -41,8 +44,8 @@ def get_client():
         _client = QdrantClient(
             url=os.getenv("QDRANT_URL"),
             api_key=os.getenv("QDRANT_API_KEY"),
-            prefer_grpc=True,
-            timeout=60,
+            prefer_grpc=False,
+            timeout=90,
             check_compatibility=False,
         )
     return _client

@@ -1,8 +1,11 @@
 """
-Production RAG — Streamlit app (cloud demo).
+Production RAG — Streamlit Community Cloud demo.
 
-Деплой: Streamlit Community Cloud (share.streamlit.io)
-Запуск локально:  streamlit run app.py
+Стек: Qdrant Cloud (hybrid dense+sparse, RRF) + FastEmbed + LLM-пул с цитатами.
+Датасет: rag_v2_q_test (MS MARCO, 310 746 пассажей) — индекс не пересобирается.
+
+Локально:  streamlit run app.py
+Облако:   share.streamlit.io (секреты — в App Settings → Secrets)
 """
 
 import os
@@ -16,98 +19,162 @@ import streamlit as st
 st.set_page_config(page_title="Production RAG", page_icon="🔎", layout="centered")
 
 
-@st.cache_resource
+# ─── Secrets → os.environ ───────────────────────────────────────────────────
+# В облаке .env нет: секреты лежат в st.secrets. common.py и module_5_retrieval.py
+# читают os.getenv(), поэтому переносим секреты в окружение ДО их импорта.
+def load_secrets_to_env() -> list:
+    if hasattr(st, "secrets") and st.secrets:
+        try:
+            items = dict(st.secrets)
+        except Exception:
+            items = {}
+        loaded = []
+        for k, v in items.items():
+            if isinstance(v, str) and v and not os.environ.get(k):
+                os.environ[k] = v
+                loaded.append(k)
+        if loaded:
+            return loaded
+    return []
+
+
+load_secrets_to_env()
+
+
+@st.cache_resource(show_spinner="Loading models & clients...")
+def get_backend(strategy: str):
+    """Инициализация retrieval-бэкенда один раз на процесс."""
+    from module_5_retrieval import COLLECTION, get_client
+    client = get_client()
+    info = client.get_collection(COLLECTION)
+
+    if strategy in ("hybrid", "dense_only", "sparse_only"):
+        from module_5_retrieval import search_dense, search_sparse, search_hybrid
+        fn = {"hybrid": search_hybrid, "dense_only": search_dense, "sparse_only": search_sparse}[strategy]
+        return fn, COLLECTION, info.points_count, None
+
+    if strategy == "hybrid_llm_rerank":
+        from module_5_retrieval import search_hybrid_rerank
+        return search_hybrid_rerank, COLLECTION, info.points_count, None
+
+    if strategy == "hybrid_cross_encoder":
+        from module_5_retrieval import search_hybrid, get_cross_encoder
+        get_cross_encoder()  # тяжёлая модель — грузим только при выборе этой стратегии
+        return search_hybrid, COLLECTION, info.points_count, "bge-reranker-base"
+
+    raise ValueError(strategy)
+
+
+@st.cache_resource(show_spinner="Loading LLM pool...")
 def get_llm():
     from common import get_chat_llm
     return get_chat_llm(temperature=0)
 
 
-@st.cache_resource
-def get_strategy(name: str):
-    from module_5_retrieval import COLLECTION, search_dense, search_sparse, search_hybrid
-    return {
-        "hybrid": search_hybrid,
-        "dense_only": search_dense,
-        "sparse_only": search_sparse,
-    }[name], COLLECTION
-
-
-def run_query(question: str, strategy: str, top_k: int):
-    fn, collection = get_strategy(strategy)
+def run_query(question: str, strategy: str, top_k: int, rerank_top: int):
     from module_7_generation import format_context, generate_citations
 
+    fn, collection, points, reranker = get_backend(strategy)
+    llm = get_llm()
+
     t0 = time.time()
-    docs = fn(question, top_k, None)
+    if strategy == "hybrid_llm_rerank":
+        docs = fn(question, k=top_k, filters=None, rerank_top=rerank_top)
+    else:
+        docs = fn(question, top_k, None)
+        if strategy == "hybrid_cross_encoder":
+            from module_5_retrieval import rerank_cross_encoder
+            docs = rerank_cross_encoder(question, docs, top_n=rerank_top)
     t1 = time.time()
 
     if not docs:
         return {
-            "answer": "No relevant documents found. Cannot answer the question.",
+            "answer": "No relevant documents found — the question is not covered by the corpus.",
             "sources": [],
             "unsupported": True,
-            "latency_ms": round((t1 - t0) * 1000, 1),
-            "retrieval_ms": round((t1 - t0) * 1000, 1),
+            "latency_ms": (t1 - t0) * 1000,
+            "retrieval_ms": (t1 - t0) * 1000,
             "generation_ms": 0.0,
             "collection": collection,
+            "points": points,
+            "reranker": reranker,
         }
 
     context = format_context(docs)
-    answer = generate_citations(question, context, get_llm())
+    answer = generate_citations(question, context, llm)
     t2 = time.time()
 
     return {
         "answer": answer,
         "sources": [
-            {"id": d[0], "score": round(float(d[2]), 3), "snippet": d[1][:220]}
+            {"id": d[0], "score": round(float(d[2]), 3), "snippet": d[1][:300]}
             for d in docs
         ],
         "unsupported": False,
-        "latency_ms": round((t2 - t0) * 1000, 1),
-        "retrieval_ms": round((t1 - t0) * 1000, 1),
-        "generation_ms": round((t2 - t1) * 1000, 1),
+        "latency_ms": (t2 - t0) * 1000,
+        "retrieval_ms": (t1 - t0) * 1000,
+        "generation_ms": (t2 - t1) * 1000,
         "collection": collection,
+        "points": points,
+        "reranker": reranker,
     }
 
 
-# ─── UI ────────────────────────────────────────────────────────────────────
+# ─── UI ─────────────────────────────────────────────────────────────────────
 
 st.title("🔎 Production RAG")
-st.caption("Hybrid search + LLM answer with citations — Qdrant Cloud, FastEmbed embeddings, cross-encoder-ready")
+st.caption("Hybrid retrieval (dense + sparse, RRF) → LLM answer with citations. Qdrant Cloud · FastEmbed · LangChain")
+
+STRATEGIES = {
+    "hybrid": "Hybrid — dense + sparse (RRF)",
+    "dense_only": "Dense only (Nomic v1.5)",
+    "sparse_only": "Sparse only (BM25)",
+    "hybrid_llm_rerank": "Hybrid + LLM rerank",
+    "hybrid_cross_encoder": "Hybrid + CrossEncoder rerank",
+}
+
+EXAMPLES = [
+    "what color is amber urine",
+    "what causes dark amber urine",
+    "what do elevated liver enzymes mean",
+    "how does a bill become law in the united states",
+    "how much does an average person make for tutoring",
+    "is autoimmune hepatitis a bile acid synthesis disorder",
+]
 
 with st.sidebar:
-    st.header("Settings")
+    st.header("Retrieval")
     strategy = st.selectbox(
-        "Search strategy",
-        ["hybrid", "dense_only", "sparse_only"],
-        index=0,
-        help="hybrid = dense + sparse with RRF fusion",
+        "Strategy", list(STRATEGIES), index=0,
+        format_func=lambda k: STRATEGIES[k],
     )
-    top_k = st.slider("Top K", min_value=1, max_value=10, value=5)
+    top_k = st.slider("Candidates (top K)", 1, 20, 8)
+    need_rerank = strategy in ("hybrid_llm_rerank", "hybrid_cross_encoder")
+    rerank_top = st.slider("After rerank", 1, 10, 5) if need_rerank else 5
+
     st.divider()
-    st.markdown("**Examples**")
-    for q in [
-        "what color is amber urine",
-        "how to reset my password?",
-        "what causes dark amber urine",
-        "what do elevated liver enzymes mean",
-        "how does a bill become law in the united states",
-    ]:
-        if st.button(q, use_container_width=True):
+    st.markdown("**Corpus**")
+    st.code("rag_v2_q_test", language=None)
+    st.caption("MS MARCO · 310 746 passages · dense 768d (COSINE/INT8) + sparse BM25")
+
+    st.divider()
+    st.markdown("**Try**")
+    for q in EXAMPLES:
+        if st.button(q, use_container_width=True, key=f"ex_{q}"):
             st.session_state["q"] = q
 
 question = st.text_input(
-    "Question",
-    key="q",
+    "Question", key="q",
     placeholder="e.g. what color is amber urine",
 )
 
-if st.button("Ask", type="primary") and question.strip():
-    with st.spinner("Retrieving and generating..."):
-        try:
-            result = run_query(question.strip(), strategy, top_k)
-        except Exception as e:
-            st.error(f"Error: {type(e).__name__}: {e}")
-            st.stop()
+if st.button("Ask", type="primary", disabled=not question.strip()):
+    try:
+        with st.spinner("Retrieving + generating (first run downloads the embedding model, ~1 min)..."):
+            result = run_query(question.strip(), strategy, top_k, rerank_top)
+    except Exception as e:
+        st.error(f"**{type(e).__name__}:** {e}")
+        st.stop()
 
     if result["unsupported"]:
         st.warning("**No answer in corpus**")
@@ -116,17 +183,20 @@ if st.button("Ask", type="primary") and question.strip():
         st.markdown("### Answer")
         st.write(result["answer"])
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Latency", f"{result['latency_ms'] / 1000:.1f}s")
-    c2.metric("Retrieval", f"{result['retrieval_ms'] / 1000:.1f}s")
-    c3.metric("Generation", f"{result['generation_ms'] / 1000:.1f}s")
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Total", f"{result['latency_ms'] / 1000:.1f}s")
+    m2.metric("Retrieval", f"{result['retrieval_ms'] / 1000:.1f}s")
+    m3.metric("Generation", f"{result['generation_ms'] / 1000:.1f}s")
 
     with st.expander(f"Sources ({len(result['sources'])})", expanded=True):
         for i, s in enumerate(result["sources"], 1):
-            st.markdown(f"**[{i}]** `{s['id']}` · score `{s['score']}`")
+            st.markdown(f"**[{i}]** `msmarco#{s['id']}` · score `{s['score']}`")
             st.text(s["snippet"])
 
     st.divider()
-    st.caption(
-        f"collection `{result['collection']}` · strategy `{strategy}` · top_k {top_k}"
+    c = st.caption(
+        f"collection `{result['collection']}` · {result['points']:,} passages · "
+        f"strategy `{strategy}` · top_k {top_k}"
     )
+    if result["reranker"]:
+        c.caption(f"reranker `{result['reranker']}`")
