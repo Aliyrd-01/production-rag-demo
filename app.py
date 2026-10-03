@@ -73,6 +73,7 @@ def get_llm():
 
 def run_query(question: str, strategy: str, top_k: int, rerank_top: int):
     from module_7_generation import format_context, generate_citations
+    from common import describe_llm
 
     fn, collection, points, reranker = get_backend(strategy)
     llm = get_llm()
@@ -98,11 +99,13 @@ def run_query(question: str, strategy: str, top_k: int, rerank_top: int):
             "collection": collection,
             "points": points,
             "reranker": reranker,
+            "llm": describe_llm(llm),
         }
 
     context = format_context(docs)
     answer = generate_citations(question, context, llm)
     t2 = time.time()
+    llm_info = describe_llm(llm)
 
     return {
         "answer": answer,
@@ -117,6 +120,7 @@ def run_query(question: str, strategy: str, top_k: int, rerank_top: int):
         "collection": collection,
         "points": points,
         "reranker": reranker,
+        "llm": llm_info,
     }
 
 
@@ -187,6 +191,13 @@ if st.button("Ask", type="primary", disabled=not question.strip()):
     m1.metric("Total", f"{result['latency_ms'] / 1000:.1f}s")
     m2.metric("Retrieval", f"{result['retrieval_ms'] / 1000:.1f}s")
     m3.metric("Generation", f"{result['generation_ms'] / 1000:.1f}s")
+
+    info = result["llm"]
+    served = info["served"]
+    llm_line = f"**LLM:** `{info['provider']}` · served `{served}`"
+    if info["served"] != info["requested"]:
+        llm_line += f" (requested `{info['requested']}`)"
+    st.caption(llm_line)
 
     with st.expander(f"Sources ({len(result['sources'])})", expanded=True):
         for i, s in enumerate(result["sources"], 1):

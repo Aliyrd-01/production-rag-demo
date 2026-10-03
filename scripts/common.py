@@ -96,7 +96,14 @@ class _PooledLLM(Runnable):
     def __init__(self, pool):
         self._pool = pool
         self._working_idx = 0
+        self._served_model = None
         self._lock = threading.Lock()
+
+    def _capture(self, out):
+        meta = getattr(out, "response_metadata", None) or {}
+        served = meta.get("model_name") or meta.get("model")
+        if served:
+            self._served_model = served
 
     def _ordered(self):
         with self._lock:
@@ -114,6 +121,7 @@ class _PooledLLM(Runnable):
             llm = self._pool[idx]
             try:
                 out = llm.invoke(input, config=config, **kwargs)
+                self._capture(out)
                 self._mark_working(idx)
                 return out
             except Exception as e:
@@ -131,6 +139,7 @@ class _PooledLLM(Runnable):
             llm = self._pool[idx]
             try:
                 for chunk in llm.stream(input, config=config, **kwargs):
+                    self._capture(chunk)
                     yielded_any = True
                     yield chunk
                 self._mark_working(idx)
@@ -148,6 +157,7 @@ class _PooledLLM(Runnable):
             llm = self._pool[idx]
             try:
                 out = await llm.ainvoke(input, config=config, **kwargs)
+                self._capture(out)
                 self._mark_working(idx)
                 return out
             except Exception as e:
@@ -165,6 +175,7 @@ class _PooledLLM(Runnable):
             llm = self._pool[idx]
             try:
                 async for chunk in llm.astream(input, config=config, **kwargs):
+                    self._capture(chunk)
                     yielded_any = True
                     yield chunk
                 self._mark_working(idx)
@@ -187,6 +198,35 @@ class _PooledLLM(Runnable):
 def get_chat_llm(temperature: float = 0.7):
     """Основной чат-LLM: пул Zen-моделей + fallback на Mistral/OpenRouter."""
     return _PooledLLM(_build_pool(temperature))
+
+
+_PROVIDERS = (
+    ("opencode.ai", "OpenCode Zen"),
+    ("api.mistral.ai", "Mistral"),
+    ("openrouter.ai", "OpenRouter"),
+)
+
+
+def _provider_of(base_url: str) -> str:
+    for needle, name in _PROVIDERS:
+        if needle in (base_url or ""):
+            return name
+    return "unknown"
+
+
+def describe_llm(llm) -> dict:
+    """Кто реально ответил: провайдер, запрошенная и фактически отдавшая модель."""
+    pool = getattr(llm, "_pool", None) or []
+    if not pool:
+        return {"provider": "?", "requested": "?", "served": "?", "pool": []}
+    active = pool[getattr(llm, "_working_idx", 0)]
+    requested = getattr(active, "model_name", "?")
+    return {
+        "provider": _provider_of(getattr(active, "openai_api_base", "")),
+        "requested": requested,
+        "served": getattr(llm, "_served_model", None) or requested,
+        "pool": [getattr(m, "model_name", "?") for m in pool],
+    }
 
 
 def get_judge_llm():
@@ -250,7 +290,7 @@ def get_embeddings(model: str = "nomic-embed-text"):
 # FastEmbed models (for Qdrant search)
 # ---------------------------------------------------------------------------
 
-_FASTEMBED_DENSE_MODEL = os.getenv("FASTEMBED_DENSE_MODEL", "BAAI/bge-small-en-v1.5")
+_FASTEMBED_DENSE_MODEL = os.getenv("FASTEMBED_DENSE_MODEL", "nomic-ai/nomic-embed-text-v1.5")
 _FASTEMBED_SPARSE_MODEL = os.getenv("FASTEMBED_SPARSE_MODEL", "Qdrant/bm25")
 _FASTEMBED_RERANKER_MODEL = os.getenv("FASTEMBED_RERANKER_MODEL", "BAAI/bge-reranker-base")
 

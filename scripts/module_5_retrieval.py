@@ -2,7 +2,7 @@
 Module 5 — Retrieval: Qdrant Hybrid Search + Reranking.
 
 Стратегии:
-  1. dense_only  — nomic-embed-text (768d) via Ollama
+  1. dense_only  — nomic-embed-text (768d) via FastEmbed
   2. sparse_only — Qdrant/bm25 via FastEmbed
   3. hybrid      — dense + sparse → Qdrant RRF fusion
   4. hybrid_rerank — hybrid → CrossEncoder (bge-reranker)
