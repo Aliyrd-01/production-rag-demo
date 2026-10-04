@@ -1,0 +1,713 @@
+{
+  "collection": "rag_v2_q_test",
+  "source": "MS MARCO qrels train.tsv",
+  "seed": 42,
+  "n": 100,
+  "items": [
+    {
+      "qid": "408144",
+      "query": "is dha important after birth",
+      "relevant": [
+        "141944"
+      ]
+    },
+    {
+      "qid": "25392",
+      "query": "are the house of representatives and senate apart of the legislative branch",
+      "relevant": [
+        "85268"
+      ]
+    },
+    {
+      "qid": "414994",
+      "query": "is java enabled",
+      "relevant": [
+        "172790"
+      ]
+    },
+    {
+      "qid": "604951",
+      "query": "what county is daviston al in?",
+      "relevant": [
+        "219035"
+      ]
+    },
+    {
+      "qid": "33048",
+      "query": "average cost of anesthesia for cataract surgery",
+      "relevant": [
+        "181338"
+      ]
+    },
+    {
+      "qid": "319931",
+      "query": "how much for residential carpet install",
+      "relevant": [
+        "90765"
+      ]
+    },
+    {
+      "qid": "615004",
+      "query": "what county lebanon, mo",
+      "relevant": [
+        "204768"
+      ]
+    },
+    {
+      "qid": "878886",
+      "query": "what months are each of the seasons in?",
+      "relevant": [
+        "27521"
+      ]
+    },
+    {
+      "qid": "958607",
+      "query": "when was lincoln memorial built",
+      "relevant": [
+        "20214"
+      ]
+    },
+    {
+      "qid": "106777",
+      "query": "cost of rewiring a house",
+      "relevant": [
+        "210787"
+      ]
+    },
+    {
+      "qid": "251778",
+      "query": "how long does food last in fridge without power",
+      "relevant": [
+        "262746"
+      ]
+    },
+    {
+      "qid": "607971",
+      "query": "what county is kenton ohio",
+      "relevant": [
+        "284642"
+      ]
+    },
+    {
+      "qid": "1024915",
+      "query": "who called the aca obamacare",
+      "relevant": [
+        "16632"
+      ]
+    },
+    {
+      "qid": "266364",
+      "query": "how long should a landlord keep old leases",
+      "relevant": [
+        "220735"
+      ]
+    },
+    {
+      "qid": "614370",
+      "query": "what county is watertown wi in?",
+      "relevant": [
+        "205698"
+      ]
+    },
+    {
+      "qid": "461117",
+      "query": "nakashima phone number",
+      "relevant": [
+        "158558"
+      ]
+    },
+    {
+      "qid": "17821",
+      "query": "anathema maranatha means",
+      "relevant": [
+        "138695"
+      ]
+    },
+    {
+      "qid": "239865",
+      "query": "how long are hard boiled eggs good to eat",
+      "relevant": [
+        "78210"
+      ]
+    },
+    {
+      "qid": "627589",
+      "query": "what does 1 km equal in miles",
+      "relevant": [
+        "179790"
+      ]
+    },
+    {
+      "qid": "953841",
+      "query": "when is wonder woman being released on dvd",
+      "relevant": [
+        "63171"
+      ]
+    },
+    {
+      "qid": "409139",
+      "query": "is edta safe",
+      "relevant": [
+        "145490"
+      ]
+    },
+    {
+      "qid": "679642",
+      "query": "what is a cpim",
+      "relevant": [
+        "128339"
+      ]
+    },
+    {
+      "qid": "86515",
+      "query": "causes of flank pain on both sides",
+      "relevant": [
+        "139991",
+        "139995"
+      ]
+    },
+    {
+      "qid": "243107",
+      "query": "how long can you keep egg whites in the fridge",
+      "relevant": [
+        "194680"
+      ]
+    },
+    {
+      "qid": "572835",
+      "query": "what are the qualifications of a professor",
+      "relevant": [
+        "226013"
+      ]
+    },
+    {
+      "qid": "671476",
+      "query": "what insurance companies are required to use oem parts",
+      "relevant": [
+        "196525"
+      ]
+    },
+    {
+      "qid": "242857",
+      "query": "how long can you eat roto chicken in the fridge",
+      "relevant": [
+        "87241"
+      ]
+    },
+    {
+      "qid": "690493",
+      "query": "what is a medical gas",
+      "relevant": [
+        "126675"
+      ]
+    },
+    {
+      "qid": "138653",
+      "query": "definition of tbi",
+      "relevant": [
+        "250978"
+      ]
+    },
+    {
+      "qid": "615759",
+      "query": "what currency does portugal use",
+      "relevant": [
+        "158188"
+      ]
+    },
+    {
+      "qid": "712767",
+      "query": "what is an average iq score for adults",
+      "relevant": [
+        "215846"
+      ]
+    },
+    {
+      "qid": "557726",
+      "query": "what are different ways rocks form",
+      "relevant": [
+        "155796",
+        "155797",
+        "155800"
+      ]
+    },
+    {
+      "qid": "720194",
+      "query": "what is aso fee",
+      "relevant": [
+        "136418"
+      ]
+    },
+    {
+      "qid": "517717",
+      "query": "the movie raze cast",
+      "relevant": [
+        "262582"
+      ]
+    },
+    {
+      "qid": "418916",
+      "query": "is naproxen the same as aleve",
+      "relevant": [
+        "214712"
+      ]
+    },
+    {
+      "qid": "202",
+      "query": "+pregnant woman symptoms",
+      "relevant": [
+        "153578"
+      ]
+    },
+    {
+      "qid": "808179",
+      "query": "what is the best day to book air flights",
+      "relevant": [
+        "37727"
+      ]
+    },
+    {
+      "qid": "610634",
+      "query": "what county is ocoee tn in?",
+      "relevant": [
+        "60054"
+      ]
+    },
+    {
+      "qid": "557379",
+      "query": "what are crystals made from",
+      "relevant": [
+        "175084"
+      ]
+    },
+    {
+      "qid": "110362",
+      "query": "cost to pour slab",
+      "relevant": [
+        "30743"
+      ]
+    },
+    {
+      "qid": "561390",
+      "query": "what are major exchanges",
+      "relevant": [
+        "250698"
+      ]
+    },
+    {
+      "qid": "433675",
+      "query": "justdial mumbai number",
+      "relevant": [
+        "151589"
+      ]
+    },
+    {
+      "qid": "49661",
+      "query": "before the pirate game on opening day",
+      "relevant": [
+        "158527"
+      ]
+    },
+    {
+      "qid": "1163248",
+      "query": "what did martin luther king do in his life",
+      "relevant": [
+        "272779"
+      ]
+    },
+    {
+      "qid": "738635",
+      "query": "what is dependent care fsa plan",
+      "relevant": [
+        "195617"
+      ]
+    },
+    {
+      "qid": "454632",
+      "query": "minimum soldier requirements",
+      "relevant": [
+        "126327"
+      ]
+    },
+    {
+      "qid": "440285",
+      "query": "linea alba definition",
+      "relevant": [
+        "128673"
+      ]
+    },
+    {
+      "qid": "426952",
+      "query": "is the nile river in the sahara desert",
+      "relevant": [
+        "158789",
+        "158790"
+      ]
+    },
+    {
+      "qid": "504412",
+      "query": "stripe how many days before payment",
+      "relevant": [
+        "91123"
+      ]
+    },
+    {
+      "qid": "549955",
+      "query": "what affects ovulation",
+      "relevant": [
+        "126846"
+      ]
+    },
+    {
+      "qid": "733608",
+      "query": "what is considered an excellent credit score",
+      "relevant": [
+        "148698"
+      ]
+    },
+    {
+      "qid": "1063760",
+      "query": "why did the vietnam war happen?",
+      "relevant": [
+        "274878"
+      ]
+    },
+    {
+      "qid": "590783",
+      "query": "what causes petechiae on legs",
+      "relevant": [
+        "245666"
+      ]
+    },
+    {
+      "qid": "1163770",
+      "query": "what county is miami gardens in",
+      "relevant": [
+        "214402"
+      ]
+    },
+    {
+      "qid": "20223",
+      "query": "appointment with foresters phone number",
+      "relevant": [
+        "144980"
+      ]
+    },
+    {
+      "qid": "446225",
+      "query": "max number of ounces on a plane",
+      "relevant": [
+        "250536"
+      ]
+    },
+    {
+      "qid": "1163312",
+      "query": "what did anglo saxons wear",
+      "relevant": [
+        "265704"
+      ]
+    },
+    {
+      "qid": "623290",
+      "query": "what do harris hawks eat",
+      "relevant": [
+        "212662"
+      ]
+    },
+    {
+      "qid": "736087",
+      "query": "what is crosnes",
+      "relevant": [
+        "152561"
+      ]
+    },
+    {
+      "qid": "1163896",
+      "query": "what county is grattan township in",
+      "relevant": [
+        "200490"
+      ]
+    },
+    {
+      "qid": "1163264",
+      "query": "what did johannes kepler do as a scientist",
+      "relevant": [
+        "270947"
+      ]
+    },
+    {
+      "qid": "948704",
+      "query": "when does wonder come out on dvd",
+      "relevant": [
+        "63171"
+      ]
+    },
+    {
+      "qid": "114051",
+      "query": "current price per stamp",
+      "relevant": [
+        "242773"
+      ]
+    },
+    {
+      "qid": "140102",
+      "query": "definition unconditional",
+      "relevant": [
+        "269808"
+      ]
+    },
+    {
+      "qid": "568146",
+      "query": "what are the characteristics of primates",
+      "relevant": [
+        "212721"
+      ]
+    },
+    {
+      "qid": "751529",
+      "query": "what is glycohemoglobin",
+      "relevant": [
+        "30951"
+      ]
+    },
+    {
+      "qid": "975075",
+      "query": "where does the wealthiest person in the us live",
+      "relevant": [
+        "46659"
+      ]
+    },
+    {
+      "qid": "92378",
+      "query": "cialis meaning",
+      "relevant": [
+        "176809"
+      ]
+    },
+    {
+      "qid": "441903",
+      "query": "lone survivor filmed at what ski area",
+      "relevant": [
+        "147376"
+      ]
+    },
+    {
+      "qid": "676945",
+      "query": "what is a cervicogenic headache",
+      "relevant": [
+        "231153"
+      ]
+    },
+    {
+      "qid": "450837",
+      "query": "med rare temp for sirloin steak",
+      "relevant": [
+        "33848"
+      ]
+    },
+    {
+      "qid": "1164223",
+      "query": "what constitutional amendment defines women's rights",
+      "relevant": [
+        "167641"
+      ]
+    },
+    {
+      "qid": "516626",
+      "query": "the largest artery in the body is",
+      "relevant": [
+        "208929"
+      ]
+    },
+    {
+      "qid": "576148",
+      "query": "what are treaties in law",
+      "relevant": [
+        "135750"
+      ]
+    },
+    {
+      "qid": "696252",
+      "query": "what is a professor emeritus",
+      "relevant": [
+        "233973"
+      ]
+    },
+    {
+      "qid": "419544",
+      "query": "is numerica credit union fdic insured",
+      "relevant": [
+        "193899"
+      ]
+    },
+    {
+      "qid": "535269",
+      "query": "va funding fee to refinance?",
+      "relevant": [
+        "67731"
+      ]
+    },
+    {
+      "qid": "200984",
+      "query": "hematuria, asymptomatic microscopic definition",
+      "relevant": [
+        "269287"
+      ]
+    },
+    {
+      "qid": "109691",
+      "query": "cost to install air conditioner",
+      "relevant": [
+        "215284"
+      ]
+    },
+    {
+      "qid": "183197",
+      "query": "excretion meaning",
+      "relevant": [
+        "20071"
+      ]
+    },
+    {
+      "qid": "850676",
+      "query": "what is the term for the maximum amount tricare will pay for a procedure?",
+      "relevant": [
+        "170721"
+      ]
+    },
+    {
+      "qid": "1008243",
+      "query": "which degree should you have to become an fbi agent",
+      "relevant": [
+        "163478"
+      ]
+    },
+    {
+      "qid": "1164068",
+      "query": "what county is camp roberts in?",
+      "relevant": [
+        "184066"
+      ]
+    },
+    {
+      "qid": "418823",
+      "query": "is mylanta good for gastritis",
+      "relevant": [
+        "211093"
+      ]
+    },
+    {
+      "qid": "428029",
+      "query": "is there a cure for mg disease",
+      "relevant": [
+        "45785"
+      ]
+    },
+    {
+      "qid": "302230",
+      "query": "how much are jaguar cars",
+      "relevant": [
+        "248002"
+      ]
+    },
+    {
+      "qid": "412992",
+      "query": "is indus air iata approved",
+      "relevant": [
+        "141479"
+      ]
+    },
+    {
+      "qid": "190190",
+      "query": "foods to eat to lower psa levels",
+      "relevant": [
+        "251933"
+      ]
+    },
+    {
+      "qid": "701769",
+      "query": "what is a stretch mark",
+      "relevant": [
+        "137353"
+      ]
+    },
+    {
+      "qid": "596562",
+      "query": "what classes do i need for rn to bsn",
+      "relevant": [
+        "208312"
+      ]
+    },
+    {
+      "qid": "419404",
+      "query": "is norco opioid",
+      "relevant": [
+        "184467"
+      ]
+    },
+    {
+      "qid": "768666",
+      "query": "what is marketing planning",
+      "relevant": [
+        "181587"
+      ]
+    },
+    {
+      "qid": "673112",
+      "query": "what is a  locus",
+      "relevant": [
+        "198466",
+        "198472"
+      ]
+    },
+    {
+      "qid": "122461",
+      "query": "define hydronephrosis kidney",
+      "relevant": [
+        "241970"
+      ]
+    },
+    {
+      "qid": "664726",
+      "query": "what guitars does jack white play",
+      "relevant": [
+        "271216"
+      ]
+    },
+    {
+      "qid": "617228",
+      "query": "what decepticons are in transformers the last knight",
+      "relevant": [
+        "163307"
+      ]
+    },
+    {
+      "qid": "748449",
+      "query": "what is forbearance",
+      "relevant": [
+        "252260"
+      ]
+    },
+    {
+      "qid": "268124",
+      "query": "how long to bake chicken in oven",
+      "relevant": [
+        "77234"
+      ]
+    },
+    {
+      "qid": "565131",
+      "query": "what are soma pills used for",
+      "relevant": [
+        "282114"
+      ]
+    },
+    {
+      "qid": "635235",
+      "query": "what does credit score need to be for a sallie mae loan",
+      "relevant": [
+        "271912"
+      ]
+    }
+  ]
+}

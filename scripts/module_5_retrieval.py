@@ -14,6 +14,7 @@ Benchmark: 10 вопросов из MS MARCO, R@5, R@10, MRR, latency.
   python scripts/module_5_retrieval.py --interactive      # интерактив
 """
 
+import math
 import os, sys, time, json, argparse
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -57,6 +58,65 @@ def get_dense():
 
 def get_sparse():
     return get_fastembed_sparse()
+
+
+_IDF_CACHE = {}
+
+
+def _load_idf():
+    """BM25 IDF-статистика, посчитанная по корпусу (eval/build_idf.py).
+
+    Коллекция создана без modifier=IDF, поэтому Qdrant не применяет IDF сам.
+    Без него sparse-вектор — это term-frequency: частые слова вроде "what" весят
+    столько же, сколько редкие термины, и sparse-поиск деградирует (Hit@5 0.46).
+    """
+    if _IDF_CACHE:
+        return _IDF_CACHE
+    path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "eval", "idf_stats.json"
+    )
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = json.load(f)
+        _IDF_CACHE["n_docs"] = raw["n_docs"]
+        _IDF_CACHE["df"] = {int(k): v for k, v in raw["df"].items()}
+        _IDF_CACHE["avg_len"] = sum(_IDF_CACHE["df"].values()) / max(len(_IDF_CACHE["df"]), 1)
+    except Exception as e:
+        print(f"  ⚠ IDF stats unavailable ({e}), using raw term-frequency")
+        return None
+    return _IDF_CACHE
+
+
+def apply_bm25_idf(svec, k1: float = 1.2, b: float = 0.75):
+    """Перевзвешивает sparse-вектор запроса формулой BM25 (idf + длина запроса).
+
+    svec — результат Qdrant/bm25 из fastembed (уже с tf-saturation).
+    Домножаем на idf и нормируем по длине запроса, чтобы короткие запросы
+    не получали систематически больший вес.
+    """
+    stats = _load_idf()
+    if not stats:
+        return svec
+
+    n_docs = stats["n_docs"]
+    df = stats["df"]
+    avg_len = stats["avg_len"] or 1.0
+
+    indices = svec.indices.tolist() if hasattr(svec.indices, "tolist") else list(svec.indices)
+    values = svec.values.tolist() if hasattr(svec.values, "tolist") else list(svec.values)
+
+    norm = k1 * (1 - b + b * len(indices) / avg_len)
+
+    out_idx, out_val = [], []
+    for idx, tf in zip(indices, values):
+        freq = df.get(int(idx), 0)
+        idf = max(math.log(1.0 + (n_docs - freq + 0.5) / (freq + 0.5)), 1e-6)
+        out_idx.append(int(idx))
+        out_val.append(float(tf) * idf / norm)
+
+    return qm.SparseVector(indices=out_idx, values=out_val)
 
 
 def get_cross_encoder():
@@ -129,7 +189,7 @@ def search_dense(query: str, k: int = 10, filters: dict | None = None):
         collection_name=COLLECTION,
         query=dvec,
         using="dense",
-        limit=k,
+        limit=max(k * 4, 20),
         with_payload=True,
         query_filter=_to_filter(filters),
     )
@@ -142,22 +202,19 @@ def search_dense(query: str, k: int = 10, filters: dict | None = None):
             float(p.score),
             payload,
         ))
-    return out
+    return _dedupe_by_doc_id(out, k)
 
 
 def search_sparse(query: str, k: int = 10, filters: dict | None = None):
     client = get_client()
     sparse = get_sparse()
     svec = list(sparse.embed([query]))[0]
-    sparse_vector = qm.SparseVector(
-        indices=svec.indices.tolist(),
-        values=svec.values.tolist(),
-    )
+    sparse_vector = apply_bm25_idf(svec)
     results = client.query_points(
         collection_name=COLLECTION,
         query=sparse_vector,
         using="sparse",
-        limit=k,
+        limit=max(k * 4, 20),
         with_payload=True,
         query_filter=_to_filter(filters),
     )
@@ -170,7 +227,7 @@ def search_sparse(query: str, k: int = 10, filters: dict | None = None):
             float(p.score),
             payload,
         ))
-    return out
+    return _dedupe_by_doc_id(out, k)
 
 
 def search_hybrid(query: str, k: int = 10, filters: dict | None = None):
@@ -181,10 +238,7 @@ def search_hybrid(query: str, k: int = 10, filters: dict | None = None):
     try:
         sparse = get_sparse()
         svec = list(sparse.embed([query]))[0]
-        sparse_vector = qm.SparseVector(
-            indices=svec.indices.tolist(),
-            values=svec.values.tolist(),
-        )
+        sparse_vector = apply_bm25_idf(svec)
         results = client.query_points(
             collection_name=COLLECTION,
             prefetch=[
@@ -192,14 +246,14 @@ def search_hybrid(query: str, k: int = 10, filters: dict | None = None):
                 qm.Prefetch(query=sparse_vector, using="sparse", limit=k * 4),
             ],
             query=qm.FusionQuery(fusion=qm.Fusion.RRF),
-            limit=k, with_payload=True, query_filter=qfilter,
+            limit=max(k * 4, 20), with_payload=True, query_filter=qfilter,
         )
     except Exception as e:
         print(f"  ⚠ Sparse model failed ({e}), falling back to dense-only")
         results = client.query_points(
             collection_name=COLLECTION,
             query=dvec, using="dense",
-            limit=k, with_payload=True, query_filter=qfilter,
+            limit=max(k * 4, 20), with_payload=True, query_filter=qfilter,
         )
     out = []
     for p in results.points:
@@ -210,7 +264,143 @@ def search_hybrid(query: str, k: int = 10, filters: dict | None = None):
             float(p.score),
             payload,
         ))
+    return _dedupe_by_doc_id(out, k)
+
+
+def _rrf_merge(rank_lists, k: int = 10, k_rrf: int = 60):
+    """Reciprocal Rank Fusion для нескольких списков документов."""
+    scores, docs = {}, {}
+    for rl in rank_lists:
+        for rank, d in enumerate(rl):
+            did = d[0]
+            scores[did] = scores.get(did, 0.0) + 1.0 / (k_rrf + rank + 1)
+            docs.setdefault(did, d)
+    ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    out = []
+    for did, sc in ranked[:k]:
+        d = docs[did]
+        out.append((d[0], d[1], sc) + (d[3:] if len(d) > 3 else ()))
     return out
+
+
+_HYDE_PROMPT = (
+    "Write a short passage of 2-3 sentences that would answer the question below. "
+    "Write it as if it were an excerpt from a reference document: state facts directly, "
+    "no preamble, no hedging, do not mention that it is hypothetical, do not ask questions. "
+    "Reply with the passage only.\n\n"
+    "Question: {query}\n\nPassage:"
+)
+
+
+def make_hypothetical_answer(query: str, llm=None) -> str:
+    """HyDE: LLM пишет гипотетический ответ, чтобы он векторизовался ближе к реальному."""
+    from common import get_chat_llm
+    llm = llm or get_chat_llm(temperature=0)
+    try:
+        out = llm.invoke(_HYDE_PROMPT.format(query=query))
+        return (out.content or "").strip()
+    except Exception as e:
+        print("  ⚠ HyDE generation failed (%s), falling back to plain hybrid" % e)
+        return ""
+
+
+def search_hybrid_hyde(query: str, k: int = 10, filters: dict | None = None, llm=None):
+    """Hybrid по исходному вопросу + hybrid по гипотетическому ответу, слитые RRF."""
+    hypo = make_hypothetical_answer(query, llm=llm)
+    if not hypo:
+        return search_hybrid(query, k=k, filters=filters)
+    base = search_hybrid(query, k=k, filters=filters)
+    hy = search_hybrid(hypo, k=k, filters=filters)
+    return _rrf_merge([base, hy], k=k)
+
+
+def _dedupe_by_doc_id(docs, k: int):
+    """Коллекция хранит чанки: один документ = несколько чанков с разными chunk_id.
+
+    Без дедупликации top_k=10 возвращает ~5 уникальных пассажей, а в контекст LLM
+    уходят дубли. Оставляем лучший (первый по score) чанк каждого doc_id.
+    """
+    best, seen = [], set()
+    for d in docs:
+        did = d[0]
+        if did in seen:
+            continue
+        seen.add(did)
+        best.append(d)
+        if len(best) >= k:
+            break
+    return best
+
+
+def _rows(results):
+    out = []
+    for p in results.points:
+        payload = p.payload or {}
+        out.append((
+            str(payload.get("doc_id", payload.get("id", p.id))),
+            payload.get("page_content", ""),
+            float(p.score),
+            payload,
+        ))
+    return out
+
+
+def _weighted_merge(lists, k=10, k_rrf=60):
+    scores, docs = {}, {}
+    for docs_list, w in lists:
+        if w <= 0:
+            continue
+        for rank, d in enumerate(_dedupe_by_doc_id(docs_list, len(docs_list))):
+            did = d[0]
+            scores[did] = scores.get(did, 0.0) + w / (k_rrf + rank + 1)
+            docs.setdefault(did, d)
+    ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    out = []
+    for did, sc in ranked[:k]:
+        d = docs[did]
+        out.append((d[0], d[1], sc) + (d[3:] if len(d) > 3 else ()))
+    return out
+
+
+def search_hybrid_weighted(query: str, k: int = 10, filters: dict | None = None,
+                           w_dense: float = 1.0, w_sparse: float = 1.0, pool: int = 40):
+    """RRF fusion с весами: чем ниже w_sparse, тем меньше шума от BM25."""
+    client = get_client()
+    qfilter = _to_filter(filters)
+    lists = []
+
+    if w_dense > 0:
+        r = client.query_points(
+            collection_name=COLLECTION, query=get_dense().embed_query(query),
+            using="dense", limit=pool, with_payload=True, query_filter=qfilter,
+        )
+        lists.append((_rows(r), w_dense))
+
+    if w_sparse > 0:
+        try:
+            svec = list(get_sparse().embed([query]))[0]
+            r = client.query_points(
+                collection_name=COLLECTION,
+                query=apply_bm25_idf(svec),
+                using="sparse", limit=pool, with_payload=True, query_filter=qfilter,
+            )
+            lists.append((_rows(r), w_sparse))
+        except Exception as e:
+            print("  ⚠ Sparse model failed (%s), dense-only" % e)
+
+    if not lists:
+        return []
+    return _weighted_merge(lists, k=k)
+
+
+def search_dense_hyde(query: str, k: int = 10, filters: dict | None = None, llm=None):
+    """Dense по исходному вопросу + dense по гипотетическому ответу, слитые RRF."""
+    hypo = make_hypothetical_answer(query, llm=llm)
+    if not hypo:
+        return search_dense(query, k=k, filters=filters)
+    base = search_dense(query, k=k, filters=filters)
+    hy = search_dense(hypo, k=k, filters=filters)
+    return _rrf_merge([base, hy], k=k)
 
 
 def rerank_cross_encoder(query: str, docs, top_n: int = 5):

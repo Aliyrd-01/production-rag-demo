@@ -8,6 +8,7 @@ Production RAG — Streamlit Community Cloud demo.
 Облако:   share.streamlit.io (секреты — в App Settings → Secrets)
 """
 
+import json
 import os
 import sys
 import time
@@ -48,9 +49,15 @@ def get_backend(strategy: str):
     client = get_client()
     info = client.get_collection(COLLECTION)
 
-    if strategy in ("hybrid", "dense_only", "sparse_only"):
-        from module_5_retrieval import search_dense, search_sparse, search_hybrid
-        fn = {"hybrid": search_hybrid, "dense_only": search_dense, "sparse_only": search_sparse}[strategy]
+    if strategy in ("hybrid", "dense_only", "sparse_only", "dense_hyde", "hybrid_hyde"):
+        from module_5_retrieval import (
+            search_dense, search_sparse, search_hybrid,
+            search_dense_hyde, search_hybrid_hyde,
+        )
+        fn = {
+            "hybrid": search_hybrid, "dense_only": search_dense, "sparse_only": search_sparse,
+            "dense_hyde": search_dense_hyde, "hybrid_hyde": search_hybrid_hyde,
+        }[strategy]
         return fn, COLLECTION, info.points_count, None
 
     if strategy == "hybrid_llm_rerank":
@@ -81,6 +88,8 @@ def run_query(question: str, strategy: str, top_k: int, rerank_top: int):
     t0 = time.time()
     if strategy == "hybrid_llm_rerank":
         docs = fn(question, k=top_k, filters=None, rerank_top=rerank_top)
+    elif strategy in ("dense_hyde", "hybrid_hyde"):
+        docs = fn(question, top_k, None, llm=llm)
     else:
         docs = fn(question, top_k, None)
         if strategy == "hybrid_cross_encoder":
@@ -130,12 +139,32 @@ st.title("🔎 Production RAG")
 st.caption("Hybrid retrieval (dense + sparse, RRF) → LLM answer with citations. Qdrant Cloud · FastEmbed · LangChain")
 
 STRATEGIES = {
+    "hybrid_cross_encoder": "Hybrid + CrossEncoder rerank  ← best (Hit@5 0.86)",
     "hybrid": "Hybrid — dense + sparse (RRF)",
     "dense_only": "Dense only (Nomic v1.5)",
-    "sparse_only": "Sparse only (BM25)",
+    "sparse_only": "Sparse only (BM25 + IDF)",
     "hybrid_llm_rerank": "Hybrid + LLM rerank",
-    "hybrid_cross_encoder": "Hybrid + CrossEncoder rerank",
+    "dense_hyde": "Dense + HyDE (hypothetical answer)",
+    "hybrid_hyde": "Hybrid + HyDE (hypothetical answer)",
 }
+
+def load_benchmarks() -> dict:
+    """Загружает результаты офлайн-eval по стратегиям retrieval."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "eval", "results_retrieval.json")
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            history = json.load(f)
+    except Exception:
+        return {}
+
+    latest = {}
+    for run in history:
+        for row in run.get("rows", []):
+            latest[row["strategy"]] = {**row, "tag": run.get("tag", "")}
+    return latest
+
 
 EXAMPLES = [
     "what color is amber urine",
@@ -211,3 +240,85 @@ if st.button("Ask", type="primary", disabled=not question.strip()):
     )
     if result["reranker"]:
         c.caption(f"reranker `{result['reranker']}`")
+
+
+# ─── Benchmarks ─────────────────────────────────────────────────────────────
+BENCH_ORDER = [
+    "dense_only", "sparse_only", "hybrid",
+    "dense_hyde", "hybrid_hyde", "hybrid_ce",
+]
+BENCH_LABELS = {
+    "dense_only": "Dense only (Nomic v1.5)",
+    "sparse_only": "Sparse only (BM25)",
+    "hybrid": "Hybrid — dense + sparse (RRF)",
+    "dense_hyde": "Dense + HyDE",
+    "hybrid_hyde": "Hybrid + HyDE",
+    "hybrid_ce": "Hybrid + CrossEncoder",
+}
+
+
+def render_benchmarks():
+    st.subheader("Retrieval benchmarks")
+    st.caption(
+        "Offline evaluation on 100 MS MARCO questions (qrels train.tsv), "
+        "ground truth = relevant doc_id present in the Qdrant index. "
+        "Documents are deduplicated by doc_id before scoring — the index stores chunks."
+    )
+
+    bench = load_benchmarks()
+    if not bench:
+        st.info("Benchmark results are not available yet — run `python eval/eval_retrieval.py`.")
+        return
+
+    rows = []
+    for key in BENCH_ORDER:
+        if key not in bench:
+            continue
+        r = bench[key]
+        rows.append({
+            "Strategy": BENCH_LABELS.get(key, key),
+            "Hit@5": r.get("hit@5"),
+            "Hit@10": r.get("hit@10"),
+            "MRR@10": r.get("mrr@10"),
+            "NDCG@10": r.get("ndcg@10"),
+            "avg s": r.get("avg_latency_s"),
+            "p95 s": r.get("p95_latency_s"),
+        })
+
+    st.dataframe(
+        rows, use_container_width=True, hide_index=True,
+        column_config={
+            "Hit@5": st.column_config.ProgressColumn(
+                "Hit@5", min_value=0.0, max_value=1.0, format="%.3f"),
+            "Hit@10": st.column_config.NumberColumn("Hit@10", format="%.3f"),
+            "MRR@10": st.column_config.NumberColumn("MRR@10", format="%.3f"),
+            "NDCG@10": st.column_config.NumberColumn("NDCG@10", format="%.3f"),
+            "avg s": st.column_config.NumberColumn("avg s", format="%.2f"),
+            "p95 s": st.column_config.NumberColumn("p95 s", format="%.2f"),
+        },
+    )
+
+    best = max(rows, key=lambda r: (r["Hit@10"] or 0, r["NDCG@10"] or 0))
+    st.success(f"**Best by Hit@10:** {best['Strategy']}** — Hit@10 {best['Hit@10']:.3f}, NDCG@10 {best['NDCG@10']:.3f}")
+
+    with st.expander("How to read this"):
+        st.markdown(
+            "- **Hit@k** — доля вопросов, для которых релевантный документ попал в топ-k.\n"
+            "- **MRR@10** — средний обратный ранг первого релевантного документа "
+            "(1.0 = релевантный документ на первой позиции).\n"
+            "- **NDCG@10** — качество ранжирования целиком, а не только факт попадания.\n"
+            "- **avg / p95 s** — задержка retrieval на одном запросе.\n\n"
+            "Все стратегии доступны в выпадающем списке слева — можно сравнить "
+            "и качество, и скорость вживую."
+        )
+
+
+tab_chat, tab_bench = st.tabs(["Chat", "Benchmarks"])
+if tab_bench.is_active:
+    render_benchmarks()
+    st.stop()
+
+st.caption(
+    f"Strategies available: {len(STRATEGIES)} · measured on 100 MS MARCO questions — "
+    "see the **Benchmarks** tab."
+)
