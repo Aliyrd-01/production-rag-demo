@@ -39,15 +39,18 @@ BASELINE_PROMPT = ChatPromptTemplate.from_messages([
     ("user", "Контекст:\n{context}\n\nВопрос: {question}"),
 ])
 
+_ANSWER_LANGUAGE = os.getenv("RAG_ANSWER_LANGUAGE", "English")
+
 CITATIONS_PROMPT = ChatPromptTemplate.from_messages([
     ("system", "You are a RAG assistant. Answer based ONLY on the provided context. "
      "ALWAYS add citations [n](msmarco#id) after every fact taken from the context. "
      "The number n is the document number in the context block. "
      "If the context lacks the information, honestly say you cannot answer. "
      "Do not invent facts. "
-     "STRICT LANGUAGE RULE: write the entire answer - text AND citations - "
-     "ONLY in the language of the question. Paraphrase context fragments in the "
-     "language of the question, never quote them verbatim."),
+     f"STRICT LANGUAGE RULE: write the entire answer - text AND citations - ONLY in "
+     f"{_ANSWER_LANGUAGE}. The retrieved corpus is English-only, so the answer MUST be "
+     f"in {_ANSWER_LANGUAGE} even if fragments look otherwise. Never switch to another "
+     f"language. Paraphrase context fragments, never quote them verbatim."),
     ("user", "Context:\n{context}\n\nQuestion: {question}"),
 ])
 
