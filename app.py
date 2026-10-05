@@ -24,19 +24,24 @@ st.set_page_config(page_title="Production RAG", page_icon="🔎", layout="center
 # В облаке .env нет: секреты лежат в st.secrets. common.py и module_5_retrieval.py
 # читают os.getenv(), поэтому переносим секреты в окружение ДО их импорта.
 def load_secrets_to_env() -> list:
-    if hasattr(st, "secrets") and st.secrets:
-        try:
-            items = dict(st.secrets)
-        except Exception:
-            items = {}
-        loaded = []
-        for k, v in items.items():
-            if isinstance(v, str) and v and not os.environ.get(k):
-                os.environ[k] = v
-                loaded.append(k)
-        if loaded:
-            return loaded
-    return []
+    """Секреты из st.secrets -> os.environ, потому что common.py и
+    module_5_retrieval.py читают os.getenv().
+
+    ВАЖНО: обращаться к st.secrets можно только внутри try. Проверка
+    `if st.secrets` вне try роняет весь скрипт с StreamlitSecretNotFoundError
+    (у st.secrets нет дешёвого __bool__/__len__, они парсят файл) — а это
+    ровно тот случай, когда клиент видит вечный лоадер вместо приложения.
+    """
+    try:
+        items = dict(st.secrets)
+    except Exception:
+        return []
+    loaded = []
+    for k, v in items.items():
+        if isinstance(v, str) and v and not os.environ.get(k):
+            os.environ[k] = v
+            loaded.append(k)
+    return loaded
 
 
 load_secrets_to_env()
@@ -66,8 +71,16 @@ def get_backend(strategy: str):
 
     if strategy == "hybrid_cross_encoder":
         from module_5_retrieval import search_hybrid, get_cross_encoder
-        get_cross_encoder()  # тяжёлая модель — грузим только при выборе этой стратегии
-        return search_hybrid, COLLECTION, info.points_count, "bge-reranker-base"
+        from common import _FASTEMBED_RERANKER_MODEL
+        try:
+            get_cross_encoder()  # лёгкий ONNX, грузим только при выборе этой стратегии
+        except Exception as e:
+            # В облаке 1 ГБ RAM. Если reranker не влез — не роняем приложение
+            # (OOM убивал контейнер в бесконечный рестарт), а откатываемся на hybrid RRF.
+            st.session_state["ce_error"] = f"{type(e).__name__}: {e}"
+            return search_hybrid, COLLECTION, info.points_count, None
+        st.session_state.pop("ce_error", None)
+        return search_hybrid, COLLECTION, info.points_count, _FASTEMBED_RERANKER_MODEL
 
     raise ValueError(strategy)
 
@@ -92,7 +105,7 @@ def run_query(question: str, strategy: str, top_k: int, rerank_top: int):
         docs = fn(question, top_k, None, llm=llm)
     else:
         docs = fn(question, top_k, None)
-        if strategy == "hybrid_cross_encoder":
+        if strategy == "hybrid_cross_encoder" and reranker:
             from module_5_retrieval import rerank_cross_encoder
             docs = rerank_cross_encoder(question, docs, top_n=rerank_top)
     t1 = time.time()
@@ -139,10 +152,12 @@ st.title("🔎 Production RAG")
 st.caption("Hybrid retrieval (dense + sparse, RRF) → LLM answer with citations. Qdrant Cloud · FastEmbed · LangChain")
 
 STRATEGIES = {
-    "hybrid_cross_encoder": "Hybrid + CrossEncoder rerank  ← best (Hit@5 0.86)",
-    "hybrid": "Hybrid — dense + sparse (RRF)",
+    # Порядок = порядок в dropdown. Дефолт — hybrid: он влезает в 1 ГБ RAM
+    # free-tier, а CrossEncoder сверху добавляет ещё ~120 МБ и вышибает контейнер.
+    "hybrid": "Hybrid — dense + sparse (RRF) + IDF  ← default",
     "dense_only": "Dense only (Nomic v1.5)",
     "sparse_only": "Sparse only (BM25 + IDF)",
+    "hybrid_cross_encoder": "Hybrid + CrossEncoder rerank  (needs >1 GB RAM)",
     "hybrid_llm_rerank": "Hybrid + LLM rerank",
     "dense_hyde": "Dense + HyDE (hypothetical answer)",
     "hybrid_hyde": "Hybrid + HyDE (hypothetical answer)",
@@ -188,7 +203,14 @@ with st.sidebar:
     st.divider()
     st.markdown("**Corpus**")
     st.code("rag_v2_q_test", language=None)
-    st.caption("MS MARCO · 310 746 passages · dense 768d (COSINE/INT8) + sparse BM25")
+    st.caption("MS MARCO · 310 746 passages · dense 768d (COSINE/INT8) + sparse BM25 + client-side IDF")
+    if strategy == "hybrid_cross_encoder":
+        st.warning(
+            "CrossEncoder загружает модель поверх embedder и не помещается в "
+            "1 ГБ RAM free-tier — облако может перезапустить контейнер. "
+            "На хосте с 2+ ГБ работает штатно.",
+            icon="⚠️",
+        )
 
     st.divider()
     st.markdown("**Try**")
@@ -196,50 +218,63 @@ with st.sidebar:
         if st.button(q, use_container_width=True, key=f"ex_{q}"):
             st.session_state["q"] = q
 
-question = st.text_input(
-    "Question", key="q",
-    placeholder="e.g. what color is amber urine",
-)
+tab_chat, tab_bench = st.tabs(["Chat", "Benchmarks"])
 
-if st.button("Ask", type="primary", disabled=not question.strip()):
-    try:
-        with st.spinner("Retrieving + generating (first run downloads the embedding model, ~1 min)..."):
-            result = run_query(question.strip(), strategy, top_k, rerank_top)
-    except Exception as e:
-        st.error(f"**{type(e).__name__}:** {e}")
-        st.stop()
-
-    if result["unsupported"]:
-        st.warning("**No answer in corpus**")
-        st.write(result["answer"])
-    else:
-        st.markdown("### Answer")
-        st.write(result["answer"])
-
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Total", f"{result['latency_ms'] / 1000:.1f}s")
-    m2.metric("Retrieval", f"{result['retrieval_ms'] / 1000:.1f}s")
-    m3.metric("Generation", f"{result['generation_ms'] / 1000:.1f}s")
-
-    info = result["llm"]
-    served = info["served"]
-    llm_line = f"**LLM:** `{info['provider']}` · served `{served}`"
-    if info["served"] != info["requested"]:
-        llm_line += f" (requested `{info['requested']}`)"
-    st.caption(llm_line)
-
-    with st.expander(f"Sources ({len(result['sources'])})", expanded=True):
-        for i, s in enumerate(result["sources"], 1):
-            st.markdown(f"**[{i}]** `msmarco#{s['id']}` · score `{s['score']}`")
-            st.text(s["snippet"])
-
-    st.divider()
-    c = st.caption(
-        f"collection `{result['collection']}` · {result['points']:,} passages · "
-        f"strategy `{strategy}` · top_k {top_k}"
+with tab_chat:
+    question = st.text_input(
+        "Question", key="q",
+        placeholder="e.g. what color is amber urine",
     )
-    if result["reranker"]:
-        c.caption(f"reranker `{result['reranker']}`")
+
+    if st.button("Ask", type="primary", disabled=not question.strip()):
+        try:
+            with st.spinner("Retrieving + generating (first run loads models, ~1 min)..."):
+                result = run_query(question.strip(), strategy, top_k, rerank_top)
+        except Exception as e:
+            st.error(f"**{type(e).__name__}:** {e}")
+        else:
+            if strategy == "hybrid_cross_encoder" and not result["reranker"]:
+                st.warning(
+                    "CrossEncoder недоступен на этом хосте — ответ показан на "
+                    "hybrid RRF. Метрики CrossEncoder — на вкладке Benchmarks."
+                )
+
+            if result["unsupported"]:
+                st.warning("**No answer in corpus**")
+                st.write(result["answer"])
+            else:
+                st.markdown("### Answer")
+                st.write(result["answer"])
+
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Total", f"{result['latency_ms'] / 1000:.1f}s")
+            m2.metric("Retrieval", f"{result['retrieval_ms'] / 1000:.1f}s")
+            m3.metric("Generation", f"{result['generation_ms'] / 1000:.1f}s")
+
+            info = result["llm"]
+            served = info["served"]
+            llm_line = f"**LLM:** `{info['provider']}` · served `{served}`"
+            if info["served"] != info["requested"]:
+                llm_line += f" (requested `{info['requested']}`)"
+            st.caption(llm_line)
+
+            with st.expander(f"Sources ({len(result['sources'])})", expanded=True):
+                for i, s in enumerate(result["sources"], 1):
+                    st.markdown(f"**[{i}]** `msmarco#{s['id']}` · score `{s['score']}`")
+                    st.text(s["snippet"])
+
+            st.divider()
+            c = st.caption(
+                f"collection `{result['collection']}` · {result['points']:,} passages · "
+                f"strategy `{strategy}` · top_k {top_k}"
+            )
+            if result["reranker"]:
+                c.caption(f"reranker `{result['reranker']}`")
+
+    st.caption(
+        f"Strategies available: {len(STRATEGIES)} · measured on 100 MS MARCO "
+        "questions — see the **Benchmarks** tab."
+    )
 
 
 # ─── Benchmarks ─────────────────────────────────────────────────────────────
@@ -313,12 +348,5 @@ def render_benchmarks():
         )
 
 
-tab_chat, tab_bench = st.tabs(["Chat", "Benchmarks"])
-if tab_bench.is_active:
+with tab_bench:
     render_benchmarks()
-    st.stop()
-
-st.caption(
-    f"Strategies available: {len(STRATEGIES)} · measured on 100 MS MARCO questions — "
-    "see the **Benchmarks** tab."
-)

@@ -459,5 +459,21 @@
         "p95_latency_s": 4.268
       }
     ]
+  },
+  {
+    "tag": "minilm-ce",
+    "rows": [
+      {
+        "strategy": "hybrid_ce",
+        "k": 10,
+        "n": 100,
+        "hit@5": 0.86,
+        "hit@10": 0.94,
+        "mrr@10": 0.6304,
+        "ndcg@10": 0.707,
+        "avg_latency_s": 3.184,
+        "p95_latency_s": 4.846
+      }
+    ]
   }
 ]

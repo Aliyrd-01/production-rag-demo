@@ -18,6 +18,13 @@ from langchain_openai import ChatOpenAI
 from langchain_core.runnables import Runnable
 from openai import APIError, RateLimitError, AuthenticationError, InternalServerError, Timeout
 
+# Ограничиваем BLAS/OMP до загрузки onnxruntime. В облаке 1 vCPU + 1 ГБ RAM,
+# а дефолтная арена onnxruntime съедает сотни мегабайт. Побочный эффект положительный:
+# на одном ядре однопоточный режим быстрее и холодный старт короче.
+for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+           "NUMEXPR_NUM_THREADS", "TOKENIZERS_PARALLELISM"):
+    os.environ.setdefault(_v, "false" if _v == "TOKENIZERS_PARALLELISM" else "1")
+
 load_dotenv(override=True)
 
 ZEN_BASE = os.getenv("OPENAI_API_BASE", "https://opencode.ai/zen/v1")
@@ -305,7 +312,14 @@ def get_embeddings(model: str = "nomic-embed-text"):
 
 _FASTEMBED_DENSE_MODEL = os.getenv("FASTEMBED_DENSE_MODEL", "nomic-ai/nomic-embed-text-v1.5")
 _FASTEMBED_SPARSE_MODEL = os.getenv("FASTEMBED_SPARSE_MODEL", "Qdrant/bm25")
-_FASTEMBED_RERANKER_MODEL = os.getenv("FASTEMBED_RERANKER_MODEL", "BAAI/bge-reranker-base")
+# Лёгкий ONNX-reranker. bge-reranker-base = 1040 MB fp32 + PyTorch-рантайм,
+# вместе с nomic (523 MB) это ~2 ГБ RAM — не влезает в 1 ГБ Streamlit Cloud
+# (контейнер умирает OOM, клиент видит бесконечный лоадер).
+# ms-marco-MiniLM-L-6-v2 = 80 MB, без torch, и обучен на MS MARCO —
+# ровно на тех же qrels, по которым мы измеряем Hit@5.
+_FASTEMBED_RERANKER_MODEL = os.getenv(
+    "FASTEMBED_RERANKER_MODEL", "Xenova/ms-marco-MiniLM-L-6-v2"
+)
 
 _fast_dense = None
 _fast_sparse = None
@@ -328,9 +342,25 @@ def get_fastembed_sparse():
     return _fast_sparse
 
 
+class _FastEmbedCrossEncoder:
+    """Обёртка над fastembed TextCrossEncoder с API sentence_transformers.CrossEncoder.
+
+    ONNX-рантайм без PyTorch. Используем rerank_pairs(): он батчит все пары
+    одним вызовом и возвращает score в исходном порядке. (rerank() в fastembed
+    0.8 отдаёт генератор отсортированных float — порядок там потерян.)
+    """
+
+    def __init__(self, model_name: str):
+        from fastembed.rerank.cross_encoder import TextCrossEncoder
+
+        self._model = TextCrossEncoder(model_name=model_name)
+
+    def predict(self, pairs):
+        return [float(s) for s in self._model.rerank_pairs(pairs)]
+
+
 def get_fastembed_reranker():
     global _fast_reranker
     if _fast_reranker is None:
-        from sentence_transformers import CrossEncoder
-        _fast_reranker = CrossEncoder(_FASTEMBED_RERANKER_MODEL)
+        _fast_reranker = _FastEmbedCrossEncoder(_FASTEMBED_RERANKER_MODEL)
     return _fast_reranker
