@@ -56,6 +56,9 @@ def build_strategies(names):
         search_sparse,
         search_hybrid,
         search_hybrid_hyde,
+        search_hybrid_hyde_ce,
+        search_multi_query,
+        search_hybrid_diverse,
         search_dense_hyde,
         search_hybrid_weighted,
         rerank_cross_encoder,
@@ -80,6 +83,15 @@ def build_strategies(names):
         docs = search_hybrid(q, k=max(k, 20))
         return [d[0] for d in rerank_cross_encoder(q, docs, top_n=k)]
 
+    def hybrid_hyde_ce(q, k):
+        return [d[0] for d in search_hybrid_hyde_ce(q, k=max(k, 20), rerank_top=k)]
+
+    def multi_query(q, k):
+        return [d[0] for d in search_multi_query(q, k=k)]
+
+    def hybrid_diverse(q, k):
+        return [d[0] for d in search_hybrid_diverse(q, k=k)]
+
     def make_weighted(ws):
         def fn(q, k):
             return [d[0] for d in search_hybrid_weighted(q, k=k, w_dense=1.0, w_sparse=ws)]
@@ -92,6 +104,9 @@ def build_strategies(names):
         "hybrid_hyde": hybrid_hyde,
         "dense_hyde": dense_hyde,
         "hybrid_ce": hybrid_ce,
+        "hybrid_hyde_ce": hybrid_hyde_ce,
+        "multi_query": multi_query,
+        "hybrid_diverse": hybrid_diverse,
         "w0.0": make_weighted(0.0),
         "w0.10": make_weighted(0.10),
         "w0.15": make_weighted(0.15),

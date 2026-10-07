@@ -12,3 +12,6 @@ eval/collection_doc_ids.txt
 st_out.txt
 st_err.txt
 st_pid.txt
+tools/
+eval/feedback.jsonl
+eval/_ab_cache/

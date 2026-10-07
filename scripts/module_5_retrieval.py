@@ -16,6 +16,7 @@ Benchmark: 10 вопросов из MS MARCO, R@5, R@10, MRR, latency.
 
 import math
 import os, sys, time, json, argparse
+from functools import lru_cache
 try:
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
@@ -58,6 +59,32 @@ def get_dense():
 
 def get_sparse():
     return get_fastembed_sparse()
+
+
+def _fix_mojibake(text: str) -> str:
+    """Repair UTF-8 text that was decoded as cp1252 (e.g. "Colorâ€"" -> "Color—").
+
+    The MS MARCO corpus was indexed with a broken encoding, so retrieved payloads
+    contain mojibake. Repairing on read fixes both the LLM context and the UI
+    without reindexing the collection.
+    """
+    if not text:
+        return text
+    try:
+        return text.encode("cp1252").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return text
+
+
+def _row(point):
+    """Uniform (doc_id, text, score, payload) row with mojibake repaired."""
+    payload = point.payload or {}
+    return (
+        str(payload.get("doc_id", payload.get("id", point.id))),
+        _fix_mojibake(payload.get("page_content", "")),
+        float(point.score),
+        payload,
+    )
 
 
 _IDF_CACHE = {}
@@ -117,6 +144,29 @@ def apply_bm25_idf(svec, k1: float = 1.2, b: float = 0.75):
         out_val.append(float(tf) * idf / norm)
 
     return qm.SparseVector(indices=out_idx, values=out_val)
+
+
+@lru_cache(maxsize=512)
+def _dense_query_vec(query: str):
+    return tuple(get_dense().embed_query(query))
+
+
+def _dense_query(query: str):
+    return list(_dense_query_vec(query))
+
+
+@lru_cache(maxsize=512)
+def _sparse_query_tuples(query: str):
+    svec = list(get_sparse().embed([query]))[0]
+    out = apply_bm25_idf(svec)
+    idx = out.indices.tolist() if hasattr(out.indices, "tolist") else list(out.indices)
+    vals = out.values.tolist() if hasattr(out.values, "tolist") else list(out.values)
+    return tuple(int(i) for i in idx), tuple(float(v) for v in vals)
+
+
+def _sparse_query(query: str):
+    idx, vals = _sparse_query_tuples(query)
+    return qm.SparseVector(indices=list(idx), values=list(vals))
 
 
 def get_cross_encoder():
@@ -183,67 +233,39 @@ def _to_filter(filters: dict | None):
 
 def search_dense(query: str, k: int = 10, filters: dict | None = None):
     client = get_client()
-    dense = get_dense()
-    dvec = dense.embed_query(query)
     results = client.query_points(
         collection_name=COLLECTION,
-        query=dvec,
+        query=_dense_query(query),
         using="dense",
         limit=max(k * 4, 20),
         with_payload=True,
         query_filter=_to_filter(filters),
     )
-    out = []
-    for p in results.points:
-        payload = p.payload or {}
-        out.append((
-            str(payload.get("doc_id", payload.get("id", p.id))),
-            payload.get("page_content", ""),
-            float(p.score),
-            payload,
-        ))
-    return _dedupe_by_doc_id(out, k)
+    return _dedupe_by_doc_id([_row(p) for p in results.points], k)
 
 
 def search_sparse(query: str, k: int = 10, filters: dict | None = None):
     client = get_client()
-    sparse = get_sparse()
-    svec = list(sparse.embed([query]))[0]
-    sparse_vector = apply_bm25_idf(svec)
     results = client.query_points(
         collection_name=COLLECTION,
-        query=sparse_vector,
+        query=_sparse_query(query),
         using="sparse",
         limit=max(k * 4, 20),
         with_payload=True,
         query_filter=_to_filter(filters),
     )
-    out = []
-    for p in results.points:
-        payload = p.payload or {}
-        out.append((
-            str(payload.get("doc_id", payload.get("id", p.id))),
-            payload.get("page_content", ""),
-            float(p.score),
-            payload,
-        ))
-    return _dedupe_by_doc_id(out, k)
+    return _dedupe_by_doc_id([_row(p) for p in results.points], k)
 
 
 def search_hybrid(query: str, k: int = 10, filters: dict | None = None):
     client = get_client()
-    dense = get_dense()
-    dvec = dense.embed_query(query)
     qfilter = _to_filter(filters)
     try:
-        sparse = get_sparse()
-        svec = list(sparse.embed([query]))[0]
-        sparse_vector = apply_bm25_idf(svec)
         results = client.query_points(
             collection_name=COLLECTION,
             prefetch=[
-                qm.Prefetch(query=dvec, using="dense", limit=k * 4),
-                qm.Prefetch(query=sparse_vector, using="sparse", limit=k * 4),
+                qm.Prefetch(query=_dense_query(query), using="dense", limit=k * 4),
+                qm.Prefetch(query=_sparse_query(query), using="sparse", limit=k * 4),
             ],
             query=qm.FusionQuery(fusion=qm.Fusion.RRF),
             limit=max(k * 4, 20), with_payload=True, query_filter=qfilter,
@@ -252,19 +274,10 @@ def search_hybrid(query: str, k: int = 10, filters: dict | None = None):
         print(f"  ⚠ Sparse model failed ({e}), falling back to dense-only")
         results = client.query_points(
             collection_name=COLLECTION,
-            query=dvec, using="dense",
+            query=_dense_query(query), using="dense",
             limit=max(k * 4, 20), with_payload=True, query_filter=qfilter,
         )
-    out = []
-    for p in results.points:
-        payload = p.payload or {}
-        out.append((
-            str(payload.get("doc_id", payload.get("id", p.id))),
-            payload.get("page_content", ""),
-            float(p.score),
-            payload,
-        ))
-    return _dedupe_by_doc_id(out, k)
+    return _dedupe_by_doc_id([_row(p) for p in results.points], k)
 
 
 def _rrf_merge(rank_lists, k: int = 10, k_rrf: int = 60):
@@ -304,8 +317,7 @@ def make_hypothetical_answer(query: str, llm=None) -> str:
         return ""
 
 
-def search_hybrid_hyde(query: str, k: int = 10, filters: dict | None = None, llm=None):
-    """Hybrid по исходному вопросу + hybrid по гипотетическому ответу, слитые RRF."""
+def _search_hybrid_hyde_sequential(query: str, k: int = 10, filters: dict | None = None, llm=None):
     hypo = make_hypothetical_answer(query, llm=llm)
     if not hypo:
         return search_hybrid(query, k=k, filters=filters)
@@ -314,35 +326,79 @@ def search_hybrid_hyde(query: str, k: int = 10, filters: dict | None = None, llm
     return _rrf_merge([base, hy], k=k)
 
 
-def _dedupe_by_doc_id(docs, k: int):
-    """Коллекция хранит чанки: один документ = несколько чанков с разными chunk_id.
+def search_hybrid_hyde(query: str, k: int = 10, filters: dict | None = None, llm=None):
+    """Hybrid over the question AND a HyDE passage, fused server-side (RRF).
 
-    Без дедупликации top_k=10 возвращает ~5 уникальных пассажей, а в контекст LLM
-    уходят дубли. Оставляем лучший (первый по score) чанк каждого doc_id.
+    One Qdrant round trip with four prefetches instead of two sequential searches,
+    which removes the latency penalty that made HyDE expensive.
     """
-    best, seen = [], set()
+    hypo = make_hypothetical_answer(query, llm=llm)
+    if not hypo:
+        return search_hybrid(query, k=k, filters=filters)
+    client = get_client()
+    qfilter = _to_filter(filters)
+    try:
+        results = client.query_points(
+            collection_name=COLLECTION,
+            prefetch=[
+                qm.Prefetch(query=_dense_query(query), using="dense", limit=k * 4),
+                qm.Prefetch(query=_sparse_query(query), using="sparse", limit=k * 4),
+                qm.Prefetch(query=_dense_query(hypo), using="dense", limit=k * 4),
+                qm.Prefetch(query=_sparse_query(hypo), using="sparse", limit=k * 4),
+            ],
+            query=qm.FusionQuery(fusion=qm.Fusion.RRF),
+            limit=max(k * 4, 20), with_payload=True, query_filter=qfilter,
+        )
+        return _dedupe_by_doc_id([_row(p) for p in results.points], k)
+    except Exception as e:
+        print(f"  ⚠ parallel HyDE failed ({e}), falling back to sequential")
+        return _search_hybrid_hyde_sequential(query, k=k, filters=filters, llm=llm)
+
+
+def _dedupe_by_doc_id(docs, k: int, max_chars: int = 1600):
+    """Group retrieved chunks by doc_id and merge their text.
+
+    The collection stores chunks; one document can hold several. The old behaviour
+    dropped every chunk but the best, so the LLM never saw the rest of a document.
+    Now distinct chunk texts of the same doc_id are merged in chunk order (capped at
+    max_chars), keeping the best score. Neighbour chunks only merge when both were
+    retrieved, so behaviour degrades gracefully where a doc has a single chunk.
+    """
+    groups, order = {}, []
     for d in docs:
         did = d[0]
-        if did in seen:
-            continue
-        seen.add(did)
-        best.append(d)
-        if len(best) >= k:
+        if did not in groups:
+            groups[did] = {"best": d, "chunks": []}
+            order.append(did)
+        g = groups[did]
+        if d[2] > g["best"][2]:
+            g["best"] = d
+        cid = (d[3] or {}).get("chunk_id")
+        g["chunks"].append((cid if isinstance(cid, int) else 0, d[1]))
+
+    out = []
+    for did in order:
+        g = groups[did]
+        best = g["best"]
+        seen, parts, total = set(), [], 0
+        for _, text in sorted(g["chunks"], key=lambda x: x[0]):
+            t = (text or "").strip()
+            if not t or t in seen:
+                continue
+            seen.add(t)
+            if parts and total + len(t) > max_chars:
+                break
+            parts.append(t)
+            total += len(t)
+        merged = "\n".join(parts) if parts else best[1]
+        out.append((best[0], merged, best[2]) + tuple(best[3:]))
+        if len(out) >= k:
             break
-    return best
+    return out
 
 
 def _rows(results):
-    out = []
-    for p in results.points:
-        payload = p.payload or {}
-        out.append((
-            str(payload.get("doc_id", payload.get("id", p.id))),
-            payload.get("page_content", ""),
-            float(p.score),
-            payload,
-        ))
-    return out
+    return [_row(p) for p in results.points]
 
 
 def _weighted_merge(lists, k=10, k_rrf=60):
@@ -449,6 +505,102 @@ def rerank_llm(query: str, docs, top_n: int = 5, llm=None):
 def search_hybrid_rerank(query: str, k: int = 10, filters: dict | None = None, rerank_top: int = 5):
     docs = search_hybrid(query, k=k, filters=filters)
     return rerank_llm(query, docs, top_n=rerank_top)
+
+
+def search_hybrid_hyde_ce(query: str, k: int = 10, filters: dict | None = None,
+                          llm=None, rerank_top: int = 5):
+    """HyDE-enhanced hybrid, then CrossEncoder rerank (best of both)."""
+    docs = search_hybrid_hyde(query, k=max(k, 20), filters=filters, llm=llm)
+    return rerank_cross_encoder(query, docs, top_n=rerank_top)
+
+
+_REWRITE_PROMPT = (
+    "Rewrite the search query below into {n} different short queries that express "
+    "the same information need with different wording. Return ONLY the queries, "
+    "one per line, no numbering, no extra text.\n\nQuery: {query}\n"
+)
+
+
+def make_rewrites(query: str, n: int = 3, llm=None) -> list:
+    """Multi-query: ask the LLM for n paraphrases of the question."""
+    from common import get_chat_llm
+    llm = llm or get_chat_llm(temperature=0)
+    try:
+        raw = llm.invoke(_REWRITE_PROMPT.format(n=n, query=query)).content or ""
+    except Exception as e:
+        print("  ⚠ rewrite generation failed (%s)" % e)
+        return []
+    out = []
+    for line in raw.splitlines():
+        line = line.strip().lstrip("-*0123456789). ").strip()
+        if line and line.lower() != query.lower():
+            out.append(line)
+        if len(out) >= n:
+            break
+    return out
+
+
+def search_multi_query(query: str, k: int = 10, filters: dict | None = None, llm=None):
+    """Hybrid for the original question plus LLM rewrites, merged with RRF."""
+    queries = [query] + make_rewrites(query, llm=llm)
+    if len(queries) == 1:
+        return search_hybrid(query, k=k, filters=filters)
+    lists = [search_hybrid(q, k=max(k, 20), filters=filters) for q in queries]
+    return _rrf_merge(lists, k=k)
+
+
+def _diversify(docs, k: int, max_overlap: float = 0.8):
+    """Lexical diversity (MMR proxy without vectors): drop near-duplicate chunks."""
+    import re as _re
+
+    def toks(s):
+        return set(_re.findall(r"[a-z0-9]+", (s or "").lower()))
+
+    picked, picked_toks = [], []
+    for d in docs:
+        t = toks(d[1])
+        if not t:
+            continue
+        if any(len(t & pt) / max(1, len(t | pt)) > max_overlap for pt in picked_toks):
+            continue
+        picked.append(d)
+        picked_toks.append(t)
+        if len(picked) >= k:
+            break
+    return picked or docs[:k]
+
+
+def search_hybrid_diverse(query: str, k: int = 10, filters: dict | None = None):
+    """Hybrid over a wider pool, then lexical MMR to remove near-duplicates."""
+    pool = search_hybrid(query, k=max(k * 3, 20), filters=filters)
+    return _diversify(pool, k)
+
+
+def trace_hybrid(query: str, k: int = 10):
+    """Per-branch candidates for the retrieval-trace UI (dense vs sparse vs fused)."""
+    client = get_client()
+    dense = client.query_points(
+        collection_name=COLLECTION, query=_dense_query(query), using="dense",
+        limit=max(k * 4, 20), with_payload=True,
+    )
+    sparse_rows = []
+    try:
+        sparse = client.query_points(
+            collection_name=COLLECTION, query=_sparse_query(query), using="sparse",
+            limit=max(k * 4, 20), with_payload=True,
+        )
+        sparse_rows = [_row(p) for p in sparse.points]
+    except Exception:
+        sparse_rows = []
+    try:
+        fused = search_hybrid(query, k=k)
+    except Exception:
+        fused = []
+    return {
+        "dense": _dedupe_by_doc_id([_row(p) for p in dense.points], k),
+        "sparse": _dedupe_by_doc_id(sparse_rows, k) if sparse_rows else [],
+        "fused": fused,
+    }
 
 
 def run_benchmark():

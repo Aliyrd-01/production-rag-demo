@@ -475,5 +475,124 @@
         "p95_latency_s": 4.846
       }
     ]
+  },
+  {
+    "tag": "after-merge",
+    "rows": [
+      {
+        "strategy": "dense_only",
+        "k": 10,
+        "n": 100,
+        "hit@5": 0.8,
+        "hit@10": 0.9,
+        "mrr@10": 0.5394,
+        "ndcg@10": 0.6231,
+        "avg_latency_s": 0.321,
+        "p95_latency_s": 0.462
+      },
+      {
+        "strategy": "sparse_only",
+        "k": 10,
+        "n": 100,
+        "hit@5": 0.54,
+        "hit@10": 0.69,
+        "mrr@10": 0.3563,
+        "ndcg@10": 0.4349,
+        "avg_latency_s": 0.196,
+        "p95_latency_s": 0.245
+      },
+      {
+        "strategy": "hybrid",
+        "k": 10,
+        "n": 100,
+        "hit@5": 0.75,
+        "hit@10": 0.87,
+        "mrr@10": 0.4997,
+        "ndcg@10": 0.5869,
+        "avg_latency_s": 0.19,
+        "p95_latency_s": 0.229
+      },
+      {
+        "strategy": "hybrid_diverse",
+        "k": 10,
+        "n": 100,
+        "hit@5": 0.69,
+        "hit@10": 0.8,
+        "mrr@10": 0.4732,
+        "ndcg@10": 0.5492,
+        "avg_latency_s": 0.203,
+        "p95_latency_s": 0.292
+      }
+    ]
+  },
+  {
+    "tag": "block2-hyde-ce",
+    "rows": [
+      {
+        "strategy": "hybrid_hyde_ce",
+        "k": 10,
+        "n": 100,
+        "hit@5": 0.85,
+        "hit@10": 0.93,
+        "mrr@10": 0.628,
+        "ndcg@10": 0.7027,
+        "avg_latency_s": 3.661,
+        "p95_latency_s": 7.187
+      }
+    ]
+  },
+  {
+    "tag": "block2-multi-query",
+    "rows": [
+      {
+        "strategy": "multi_query",
+        "k": 10,
+        "n": 30,
+        "hit@5": 0.8,
+        "hit@10": 0.8667,
+        "mrr@10": 0.5839,
+        "ndcg@10": 0.654,
+        "avg_latency_s": 2.943,
+        "p95_latency_s": 4.815
+      }
+    ]
+  },
+  {
+    "tag": "block2-fair-30",
+    "rows": [
+      {
+        "strategy": "hybrid",
+        "k": 10,
+        "n": 30,
+        "hit@5": 0.7333,
+        "hit@10": 0.8667,
+        "mrr@10": 0.5359,
+        "ndcg@10": 0.6149,
+        "avg_latency_s": 0.402,
+        "p95_latency_s": 0.352
+      },
+      {
+        "strategy": "hybrid_ce",
+        "k": 10,
+        "n": 30,
+        "hit@5": 0.8667,
+        "hit@10": 0.9,
+        "mrr@10": 0.6694,
+        "ndcg@10": 0.7276,
+        "avg_latency_s": 0.976,
+        "p95_latency_s": 1.453
+      },
+      {
+        "strategy": "multi_query",
+        "k": 10,
+        "n": 30,
+        "hit@5": 0.7667,
+        "hit@10": 0.8333,
+        "mrr@10": 0.5311,
+        "ndcg@10": 0.606,
+        "avg_latency_s": 2.621,
+        "p95_latency_s": 5.733
+      }
+    ]
   }
 ]

@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Byte-compile
+        run: python -m py_compile app.py scripts/*.py eval/*.py
+      - name: Unit tests (no network)
+        run: python eval/test_units.py
+      - name: Full smoke (only when Qdrant secret is configured)
+        env:
+          QDRANT_URL: ${{ secrets.QDRANT_URL }}
+          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+          FASTEMBED_DENSE_MODEL: nomic-ai/nomic-embed-text-v1.5
+          FASTEMBED_SPARSE_MODEL: Qdrant/bm25
+          QUBAX_API_KEY: ${{ secrets.QUBAX_API_KEY }}
+        run: |
+          if [ -z "$QDRANT_URL" ]; then
+            echo "QDRANT_URL not set — skipping full smoke";
+            exit 0;
+          fi
+          python eval/smoke_app.py

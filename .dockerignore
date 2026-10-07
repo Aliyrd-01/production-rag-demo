@@ -1,0 +1,13 @@
+.git
+.gitignore
+__pycache__
+*.pyc
+.env
+.env.*
+*.log
+eval/_ab_cache
+eval/*.log
+venv
+.venv
+_venv*
+tools/
