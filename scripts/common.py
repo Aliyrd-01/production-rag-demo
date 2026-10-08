@@ -1,12 +1,9 @@
 """
 common.py — единая точка доступа к LLM для всех скриптов.
-Бэкенд: OpenCode Zen + Mistral API. Доступны модели:
-  - big-pickle            (основная, сильная)
-  - mistral-medium-3.5    (быстрая альтернатива, Mistral API)
-  - deepseek-v4-flash-free (flash, резерв)
-
-Пул моделей: big-pickle -> deepseek-v4-flash-free -> Mistral -> OpenRouter.
+Бэкенд: Qubax (основной) + OpenCode Zen + Mistral + OpenRouter.
+Пул моделей: Qubax (qwen3-235b-a22b, minimax-m2.5) -> Zen (big-pickle) -> Mistral.
 При ошибке/лимите одной модели — следующая.
+Судья (get_judge_llm) — отдельная модель Qubax (qwen3-32b), не совпадает с отвечающей.
 
 ВАЖНО: load_dotenv(override=True) — иначе глобальная переменная Windows
 OPENAI_API_KEY (sk-proj-...) перекрывает .env и скрипты незаметно уходят не туда.
@@ -29,7 +26,7 @@ load_dotenv(override=True)
 
 ZEN_BASE = os.getenv("OPENAI_API_BASE", "https://opencode.ai/zen/v1")
 ZEN_KEY = os.getenv("OPENAI_API_KEY")
-ZEN_MODELS = ["big-pickle", "deepseek-v4-flash-free"]
+ZEN_MODELS = ["big-pickle"]
 
 MISTRAL_KEY = os.getenv("MISTRAL_API_KEY")
 MISTRAL_BASE = "https://api.mistral.ai/v1"
@@ -249,17 +246,23 @@ def describe_llm(llm) -> dict:
     }
 
 
+JUDGE_MODEL = os.getenv("JUDGE_MODEL", "qwen3-32b")
+_JUDGE_FALLBACKS = ["qwen3-32b", "glm-4.5-air", "minimax-m2.5"]
+
+
 def get_judge_llm():
-    """LLM для оценки faithfulness — deepseek-v4-flash-free, timeout 120с."""
-    _check_api_keys(need_zen=True)
-    return ChatOpenAI(
-        model="deepseek-v4-flash-free",
-        openai_api_key=ZEN_KEY,
-        openai_api_base=ZEN_BASE,
-        temperature=0,
-        timeout=120,
-        max_retries=2,
-    )
+    """Independent judge for faithfulness/relevancy scoring.
+
+    Must NOT be the answering model (avoids self-evaluation bias). Default
+    `qwen3-32b` on Qubax: ~$1.2 / $4.2 per 1M tokens (blend ~$1.95 - cheaper than
+    minimax-m2.5 and faster than glm-4.5-air) and a different size from the
+    qwen3-235b answerer. Falls back through _JUDGE_FALLBACKS, then to the main pool.
+    """
+    fallbacks = [JUDGE_MODEL] + [m for m in _JUDGE_FALLBACKS if m != JUDGE_MODEL]
+    if QUBAX_KEY:
+        pool = [_make(0, m, QUBAX_BASE, QUBAX_KEY) for m in fallbacks]
+        return _PooledLLM(pool)
+    return get_chat_llm(temperature=0)
 
 
 def get_struct_llm():

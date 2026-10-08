@@ -1,10 +1,20 @@
 {
-  "ts": "2026-10-07 18:37:42",
+  "ts": "2026-10-08 10:09:03",
   "tag": "run",
   "strategy": "hybrid",
   "k": 5,
-  "n": 30,
+  "n": 3,
   "judge": {
+    "provider": "Qubax",
+    "requested": "qwen3-32b",
+    "served": "qwen3-32b",
+    "pool": [
+      "qwen3-32b",
+      "glm-4.5-air",
+      "minimax-m2.5"
+    ]
+  },
+  "answerer": {
     "provider": "Qubax",
     "requested": "qwen3-235b-a22b-2507",
     "served": "qwen3-235b-a22b-2507",
@@ -12,316 +22,45 @@
       "qwen3-235b-a22b-2507",
       "minimax-m2.5",
       "big-pickle",
-      "deepseek-v4-flash-free",
       "mistral-medium-3.5"
     ]
   },
   "summary": {
-    "faithfulness": 0.965,
-    "answer_relevancy": 0.9167,
+    "faithfulness": 0.9667,
+    "answer_relevancy": 0.9333,
     "citation_valid_rate": 1.0,
-    "avg_latency_s": 5.812
+    "avg_latency_s": 7.39
   },
   "rows": [
     {
       "qid": "408144",
       "query": "is dha important after birth",
       "n_docs": 5,
-      "n_citations": 3,
+      "n_citations": 2,
       "citation_valid": true,
       "faithfulness": 1.0,
       "answer_relevancy": 1.0,
-      "latency_s": 8.88
+      "latency_s": 10.52
     },
     {
       "qid": "25392",
       "query": "are the house of representatives and senate apart of the legislative branch",
       "n_docs": 5,
-      "n_citations": 4,
+      "n_citations": 3,
       "citation_valid": true,
       "faithfulness": 1.0,
       "answer_relevancy": 1.0,
-      "latency_s": 7.28
+      "latency_s": 6.65
     },
     {
       "qid": "414994",
       "query": "is java enabled",
       "n_docs": 5,
-      "n_citations": 1,
+      "n_citations": 2,
       "citation_valid": true,
-      "faithfulness": 1.0,
+      "faithfulness": 0.9,
       "answer_relevancy": 0.8,
-      "latency_s": 4.07
-    },
-    {
-      "qid": "604951",
-      "query": "what county is daviston al in?",
-      "n_docs": 5,
-      "n_citations": 1,
-      "citation_valid": true,
-      "faithfulness": 1.0,
-      "answer_relevancy": 1.0,
-      "latency_s": 3.22
-    },
-    {
-      "qid": "33048",
-      "query": "average cost of anesthesia for cataract surgery",
-      "n_docs": 5,
-      "n_citations": 1,
-      "citation_valid": true,
-      "faithfulness": 1.0,
-      "answer_relevancy": 0.3,
-      "latency_s": 3.98
-    },
-    {
-      "qid": "319931",
-      "query": "how much for residential carpet install",
-      "n_docs": 5,
-      "n_citations": 3,
-      "citation_valid": true,
-      "faithfulness": 1.0,
-      "answer_relevancy": 0.9,
-      "latency_s": 6.12
-    },
-    {
-      "qid": "615004",
-      "query": "what county lebanon, mo",
-      "n_docs": 5,
-      "n_citations": 1,
-      "citation_valid": true,
-      "faithfulness": 1.0,
-      "answer_relevancy": 1.0,
-      "latency_s": 4.56
-    },
-    {
-      "qid": "878886",
-      "query": "what months are each of the seasons in?",
-      "n_docs": 5,
-      "n_citations": 4,
-      "citation_valid": true,
-      "faithfulness": 0.9,
-      "answer_relevancy": 1.0,
-      "latency_s": 5.69
-    },
-    {
-      "qid": "958607",
-      "query": "when was lincoln memorial built",
-      "n_docs": 5,
-      "n_citations": 3,
-      "citation_valid": true,
-      "faithfulness": 1.0,
-      "answer_relevancy": 1.0,
-      "latency_s": 4.25
-    },
-    {
-      "qid": "106777",
-      "query": "cost of rewiring a house",
-      "n_docs": 5,
-      "n_citations": 4,
-      "citation_valid": true,
-      "faithfulness": 1.0,
-      "answer_relevancy": 0.9,
-      "latency_s": 6.09
-    },
-    {
-      "qid": "251778",
-      "query": "how long does food last in fridge without power",
-      "n_docs": 5,
-      "n_citations": 3,
-      "citation_valid": true,
-      "faithfulness": 0.9,
-      "answer_relevancy": 0.9,
-      "latency_s": 6.69
-    },
-    {
-      "qid": "607971",
-      "query": "what county is kenton ohio",
-      "n_docs": 5,
-      "n_citations": 1,
-      "citation_valid": true,
-      "faithfulness": 1.0,
-      "answer_relevancy": 1.0,
-      "latency_s": 3.99
-    },
-    {
-      "qid": "1024915",
-      "query": "who called the aca obamacare",
-      "n_docs": 5,
-      "n_citations": 2,
-      "citation_valid": true,
-      "faithfulness": 0.8,
-      "answer_relevancy": 0.9,
-      "latency_s": 7.72
-    },
-    {
-      "qid": "266364",
-      "query": "how long should a landlord keep old leases",
-      "n_docs": 5,
-      "n_citations": 5,
-      "citation_valid": true,
-      "faithfulness": 1.0,
-      "answer_relevancy": 0.9,
-      "latency_s": 6.48
-    },
-    {
-      "qid": "614370",
-      "query": "what county is watertown wi in?",
-      "n_docs": 5,
-      "n_citations": 1,
-      "citation_valid": true,
-      "faithfulness": 1.0,
-      "answer_relevancy": 1.0,
-      "latency_s": 3.85
-    },
-    {
-      "qid": "461117",
-      "query": "nakashima phone number",
-      "n_docs": 5,
-      "n_citations": 2,
-      "citation_valid": true,
-      "faithfulness": 0.8,
-      "answer_relevancy": 0.8,
-      "latency_s": 4.06
-    },
-    {
-      "qid": "17821",
-      "query": "anathema maranatha means",
-      "n_docs": 5,
-      "n_citations": 2,
-      "citation_valid": true,
-      "faithfulness": 1.0,
-      "answer_relevancy": 0.9,
-      "latency_s": 4.33
-    },
-    {
-      "qid": "239865",
-      "query": "how long are hard boiled eggs good to eat",
-      "n_docs": 5,
-      "n_citations": 3,
-      "citation_valid": true,
-      "faithfulness": 1.0,
-      "answer_relevancy": 1.0,
-      "latency_s": 4.7
-    },
-    {
-      "qid": "627589",
-      "query": "what does 1 km equal in miles",
-      "n_docs": 5,
-      "n_citations": 2,
-      "citation_valid": true,
-      "faithfulness": 1.0,
-      "answer_relevancy": 1.0,
-      "latency_s": 8.09
-    },
-    {
-      "qid": "953841",
-      "query": "when is wonder woman being released on dvd",
-      "n_docs": 5,
-      "n_citations": 1,
-      "citation_valid": true,
-      "faithfulness": 1.0,
-      "answer_relevancy": 0.8,
-      "latency_s": 3.49
-    },
-    {
-      "qid": "409139",
-      "query": "is edta safe",
-      "n_docs": 5,
-      "n_citations": 5,
-      "citation_valid": true,
-      "faithfulness": 0.9,
-      "answer_relevancy": 0.9,
-      "latency_s": 8.41
-    },
-    {
-      "qid": "679642",
-      "query": "what is a cpim",
-      "n_docs": 5,
-      "n_citations": 5,
-      "citation_valid": true,
-      "faithfulness": 0.95,
-      "answer_relevancy": 1.0,
-      "latency_s": 5.05
-    },
-    {
-      "qid": "86515",
-      "query": "causes of flank pain on both sides",
-      "n_docs": 5,
-      "n_citations": 4,
-      "citation_valid": true,
-      "faithfulness": 1.0,
-      "answer_relevancy": 0.9,
-      "latency_s": 10.64
-    },
-    {
-      "qid": "243107",
-      "query": "how long can you keep egg whites in the fridge",
-      "n_docs": 5,
-      "n_citations": 2,
-      "citation_valid": true,
-      "faithfulness": 0.9,
-      "answer_relevancy": 0.9,
-      "latency_s": 4.49
-    },
-    {
-      "qid": "572835",
-      "query": "what are the qualifications of a professor",
-      "n_docs": 5,
-      "n_citations": 3,
-      "citation_valid": true,
-      "faithfulness": 1.0,
-      "answer_relevancy": 0.9,
-      "latency_s": 5.67
-    },
-    {
-      "qid": "671476",
-      "query": "what insurance companies are required to use oem parts",
-      "n_docs": 5,
-      "n_citations": 3,
-      "citation_valid": true,
-      "faithfulness": 0.9,
-      "answer_relevancy": 0.9,
-      "latency_s": 6.69
-    },
-    {
-      "qid": "242857",
-      "query": "how long can you eat roto chicken in the fridge",
-      "n_docs": 5,
-      "n_citations": 2,
-      "citation_valid": true,
-      "faithfulness": 1.0,
-      "answer_relevancy": 1.0,
-      "latency_s": 6.92
-    },
-    {
-      "qid": "690493",
-      "query": "what is a medical gas",
-      "n_docs": 5,
-      "n_citations": 3,
-      "citation_valid": true,
-      "faithfulness": 0.95,
-      "answer_relevancy": 1.0,
-      "latency_s": 7.29
-    },
-    {
-      "qid": "138653",
-      "query": "definition of tbi",
-      "n_docs": 5,
-      "n_citations": 3,
-      "citation_valid": true,
-      "faithfulness": 0.95,
-      "answer_relevancy": 0.9,
-      "latency_s": 6.13
-    },
-    {
-      "qid": "615759",
-      "query": "what currency does portugal use",
-      "n_docs": 5,
-      "n_citations": 3,
-      "citation_valid": true,
-      "faithfulness": 1.0,
-      "answer_relevancy": 1.0,
-      "latency_s": 5.52
+      "latency_s": 5.0
     }
   ]
 }

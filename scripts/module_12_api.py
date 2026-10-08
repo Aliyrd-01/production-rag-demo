@@ -135,7 +135,9 @@ else:
 
 
 try:
-    if _langfuse_client is None and os.getenv("LANGFUSE_PUBLIC_KEY") and FilledUsageCallbackHandler is not None:
+    _langfuse_on = os.getenv("ENABLE_LANGFUSE", "").lower() in ("1", "true", "yes")
+    if (_langfuse_client is None and _langfuse_on
+            and os.getenv("LANGFUSE_PUBLIC_KEY") and FilledUsageCallbackHandler is not None):
         _langfuse_client = Langfuse()
         _langfuse_handler = FilledUsageCallbackHandler()
         print(f"[langfuse] tracing to {os.getenv('LANGFUSE_HOST','https://cloud.langfuse.com')}")

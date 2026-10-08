@@ -51,13 +51,14 @@ def main():
         format_context, sanitize_context, generate_citations,
         verify_grounding, check_faithfulness,
     )
-    from common import get_chat_llm, describe_llm
+    from common import get_chat_llm, get_judge_llm, describe_llm
 
     with open(EVAL_SET, encoding="utf-8") as f:
         data = json.load(f)
     items = data["items"][: args.limit] if args.limit else data["items"]
 
-    llm = get_chat_llm(temperature=0)
+    llm = get_chat_llm(temperature=0)     # answerer
+    judge = get_judge_llm()               # independent judge (must differ from answerer)
 
     def retrieve(q, k):
         s = args.strategy
@@ -85,9 +86,9 @@ def main():
 
         ids = [str(d[0]) for d in docs]
         issues, cited, has_issues = verify_grounding(answer, ids, len(docs))
-        faith = check_faithfulness(context, answer, llm)
+        faith = check_faithfulness(context, answer, judge)
         try:
-            rel = _num(llm.invoke(RELEVANCY_TPL.format(q=it["query"], a=answer)).content)
+            rel = _num(judge.invoke(RELEVANCY_TPL.format(q=it["query"], a=answer)).content)
         except Exception:
             rel = 0.0
 
@@ -119,7 +120,8 @@ def main():
         "strategy": args.strategy,
         "k": args.k,
         "n": len(rows),
-        "judge": describe_llm(llm),
+        "judge": describe_llm(judge),
+        "answerer": describe_llm(llm),
         "summary": summary,
         "rows": rows,
     }
